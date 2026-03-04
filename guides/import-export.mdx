@@ -1,0 +1,384 @@
+---
+title: Import & Export Rules
+description: Export your routing rules to JSON or CSV, and import them with flexible merge strategies
+---
+
+Default Tamer supports exporting your routing rules to shareable files and importing rules from backup or other machines.
+
+## Export Formats
+
+You can export your rules in two formats:
+
+### JSON Export
+
+JSON exports include complete rule metadata and are the recommended format for backup and sharing.
+
+**Export structure from source:**
+```swift
+struct RulesExport: Codable {
+    let version: Int              // Export format version (currently 1)
+    let exportedAt: Date          // Timestamp of export
+    let appVersion: String        // Default Tamer version
+    let rules: [Rule]             // Array of rules
+}
+```
+
+**Example JSON export:**
+```json
+{
+  "version": 1,
+  "exportedAt": "2024-03-15T14:30:00Z",
+  "appVersion": "0.0.5",
+  "rules": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "type": "Domain",
+      "enabled": true,
+      "domainPattern": "github.com",
+      "domainMatchType": "Exact",
+      "targetBrowserId": "org.mozilla.firefox",
+      "openInPrivateMode": false
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440001",
+      "type": "Source App",
+      "enabled": true,
+      "sourceAppBundleId": "com.tinyspeck.slackmacgap",
+      "sourceAppName": "Slack",
+      "targetBrowserId": "com.google.Chrome",
+      "openInPrivateMode": false
+    }
+  ]
+}
+```
+
+**Export implementation:**
+```swift
+static func exportToJSON(_ rules: [Rule]) throws -> Data {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    encoder.dateEncodingStrategy = .iso8601
+    
+    let exportData = RulesExport(
+        version: 1,
+        exportedAt: Date(),
+        appVersion: AppVersion.current,
+        rules: rules
+    )
+    
+    return try encoder.encode(exportData)
+}
+```
+
+### CSV Export
+
+CSV exports create a simple spreadsheet-compatible format for viewing and editing in Excel or Google Sheets.
+
+**CSV structure from source:**
+```csv
+Type,Enabled,Pattern/Domain/Bundle ID,Target Browser,URL Contains,URL Regex
+Domain,Yes,github.com (Exact),org.mozilla.firefox,,
+Source App,Yes,com.tinyspeck.slackmacgap,com.google.Chrome,,
+URL Pattern,Yes,,com.apple.Safari,/admin,
+URL Pattern,Yes,,org.mozilla.firefox,,[A-Z]+-[0-9]+
+```
+
+**Export implementation:**
+```swift
+static func exportToCSV(_ rules: [Rule]) throws -> Data {
+    var csv = "Type,Enabled,Pattern/Domain/Bundle ID,Target Browser,URL Contains,URL Regex\n"
+    
+    for rule in rules {
+        let type = rule.type.rawValue
+        let enabled = rule.enabled ? "Yes" : "No"
+        
+        let pattern: String
+        switch rule.type {
+        case .domain:
+            let domainType = rule.domainMatchType?.rawValue ?? "Exact"
+            pattern = "\(rule.domainPattern ?? "") (\(domainType))"
+        case .urlPattern:
+            pattern = rule.urlContains ?? rule.urlRegex ?? ""
+        case .sourceApp:
+            pattern = rule.sourceAppName ?? rule.sourceAppBundleId ?? ""
+        }
+        
+        // CSV fields are automatically escaped if they contain commas or quotes
+        csv += "\(type),\(enabled),\(pattern),\(targetBrowser),\(urlContains),\(urlRegex)\n"
+    }
+    
+    return csv.data(using: .utf8)
+}
+```
+
+<Warning>
+CSV exports may lose some metadata like rule IDs and exact timestamps. Use JSON format for complete backups.
+</Warning>
+
+## Export Your Rules
+
+<Steps>
+
+### Open Rules Window
+
+Click the Default Tamer icon in your menu bar and select **Rules**.
+
+### Click Export
+
+Click the **Export** button in the toolbar.
+
+### Choose Format
+
+Select either **JSON** (recommended) or **CSV** format.
+
+### Save File
+
+Choose a location and save your rules file:
+- `my-rules.json` — Full backup with metadata
+- `my-rules.csv` — Spreadsheet format for editing
+
+</Steps>
+
+## Import Modes
+
+When importing rules, you can choose how to handle existing rules:
+
+### Replace All
+
+**Behavior:** Deletes all existing rules and replaces them with imported ones.
+
+**From source:**
+```swift
+case .replace:
+    return importedRules  // Completely replaces existing rules
+```
+
+**Use when:**
+- Restoring from backup
+- Starting fresh with a new rule set
+- Adopting a team's standard configuration
+
+<Warning>
+This permanently deletes all your current rules. Export your current rules first if you might need them later.
+</Warning>
+
+### Append
+
+**Behavior:** Adds imported rules to the end of your existing rules.
+
+**From source:**
+```swift
+case .append:
+    return existingRules + importedRules  // Adds to end
+```
+
+**Use when:**
+- Adding new rules from a shared file
+- Merging rules from another machine
+- You're okay with potential duplicate rules
+
+<Note>
+Append mode may create duplicate rules if you import the same file twice. Use **Merge** mode to avoid duplicates.
+</Note>
+
+### Merge
+
+**Behavior:** Adds only new rules that don't already exist, avoiding duplicates.
+
+**From source:**
+```swift
+case .merge:
+    var merged = existingRules
+    for importedRule in importedRules {
+        // Check if rule already exists (based on type and pattern)
+        let isDuplicate = existingRules.contains { existing in
+            guard existing.type == importedRule.type else { return false }
+            guard existing.targetBrowserId == importedRule.targetBrowserId else { return false }
+            
+            switch importedRule.type {
+            case .domain:
+                return existing.domainPattern == importedRule.domainPattern
+            case .urlPattern:
+                return existing.urlContains == importedRule.urlContains &&
+                       existing.urlRegex == importedRule.urlRegex
+            case .sourceApp:
+                return existing.sourceAppBundleId == importedRule.sourceAppBundleId
+            }
+        }
+        
+        if !isDuplicate {
+            merged.append(importedRule)
+        }
+    }
+    return merged
+```
+
+**Duplicate detection logic:**
+- **Source App rules:** Same bundle ID and target browser
+- **Domain rules:** Same domain pattern and target browser
+- **URL Pattern rules:** Same URL contains/regex and target browser
+
+**Use when:**
+- Syncing rules across machines
+- Importing shared team rules without duplicates
+- Adding rules from multiple sources
+
+## Import Rules
+
+<Steps>
+
+### Open Rules Window
+
+Click the Default Tamer icon in your menu bar and select **Rules**.
+
+### Click Import
+
+Click the **Import** button in the toolbar.
+
+### Select File
+
+Choose a `.json` or `.csv` rules file from your computer.
+
+### Choose Import Mode
+
+Select how to handle the imported rules:
+
+- **Replace All** — Remove all existing rules and use only the imported ones
+- **Append** — Add imported rules to the end of your current rules
+- **Merge** — Add only new rules, skipping duplicates
+
+### Confirm Import
+
+Review the import summary and click **Import** to apply the changes.
+
+</Steps>
+
+## Advanced: Editing CSV Files
+
+You can edit CSV exports in Excel or Google Sheets before importing:
+
+### Column Reference
+
+| Column | Values | Example |
+|--------|--------|----------|
+| **Type** | `Source App`, `Domain`, `URL Pattern` | `Domain` |
+| **Enabled** | `Yes`, `No` | `Yes` |
+| **Pattern** | Rule-specific pattern | `github.com (Exact)` |
+| **Target Browser** | Browser bundle ID | `org.mozilla.firefox` |
+| **URL Contains** | Substring to match | `/admin` |
+| **URL Regex** | Regex pattern | `[A-Z]+-[0-9]+` |
+
+### Domain Pattern Format
+
+For domain rules, the Pattern column should include the match type in parentheses:
+
+```
+github.com (Exact)
+.atlassian.net (Suffix)
+jira (Contains)
+```
+
+### CSV Escaping
+
+Fields containing commas, quotes, or newlines are automatically escaped:
+
+**From source:**
+```swift
+private static func escapeCSVField(_ field: String) -> String {
+    if field.contains(",") || field.contains("\"") || field.contains("\n") {
+        let escaped = field.replacingOccurrences(of: "\"", with: "\"\"")
+        return "\"\(escaped)\""
+    }
+    return field
+}
+```
+
+## Version Compatibility
+
+Default Tamer validates import files to ensure compatibility:
+
+**From source:**
+```swift
+// Validate version compatibility
+if exportData.version > 1 {
+    throw AppError.invalidRule(reason: "Unsupported export format version \(exportData.version)")
+}
+```
+
+**Current version:** 1
+
+**Backward compatibility:**
+- Can import plain JSON arrays of rules (legacy format)
+- Automatically handles missing optional fields
+- Validates rule structure before import
+
+## Common Use Cases
+
+### Backup Before Major Changes
+
+```
+1. Export to JSON → my-rules-backup-2024-03-15.json
+2. Make changes to rules
+3. Test new configuration
+4. Keep backup file for rollback if needed
+```
+
+### Share Team Configuration
+
+```
+1. Export company rules to JSON → team-rules.json
+2. Share file with team (Slack, email, etc.)
+3. Team members import with "Merge" mode
+4. Everyone has consistent routing for company domains
+```
+
+### Sync Across Machines
+
+```
+Machine 1:
+1. Export to JSON → rules.json
+2. Save to iCloud/Dropbox
+
+Machine 2:
+1. Download rules.json
+2. Import with "Merge" mode
+3. Both machines now have all rules
+```
+
+### Edit in Spreadsheet
+
+```
+1. Export to CSV → rules.csv
+2. Open in Excel/Google Sheets
+3. Bulk edit patterns, enable/disable rules
+4. Save as CSV
+5. Import with "Replace All" mode
+```
+
+## Troubleshooting
+
+### Import Failed: "No valid rules found"
+
+**Cause:** CSV file is empty or improperly formatted.
+
+**Solution:**
+- Ensure CSV has header row: `Type,Enabled,Pattern/Domain/Bundle ID,Target Browser,URL Contains,URL Regex`
+- Check that each rule has at minimum: Type, Enabled status, and Target Browser
+- Verify file is saved as UTF-8 encoded CSV
+
+### Import Failed: "Unsupported export format version"
+
+**Cause:** Trying to import rules from a newer version of Default Tamer.
+
+**Solution:**
+- Update Default Tamer to the latest version
+- Or ask the exporter to downgrade their export format
+
+### Rules Import but Don't Work
+
+**Cause:** Target browsers may not be installed on your machine.
+
+**Solution:**
+- Check that all referenced browser bundle IDs are installed
+- Update rules to use browsers available on your system
+- See [Troubleshooting: Browsers Not Detected](/guides/troubleshooting#browsers-not-detected)

@@ -1,0 +1,160 @@
+---
+title: Private Mode
+description: Open links in incognito or private browsing mode automatically based on your routing rules
+---
+
+Default Tamer supports opening URLs in private/incognito mode for most major browsers. This feature works on a per-rule basis, allowing you to automatically open certain links privately while keeping others in normal mode.
+
+## How It Works
+
+When you enable "Open in Private Mode" for a rule, Default Tamer passes browser-specific command-line flags to launch the URL in a private window.
+
+<Note>
+  Private mode is configured per-rule. You can have some rules open URLs normally while others use private mode, even for the same browser.
+</Note>
+
+## Supported Browsers
+
+Default Tamer uses the following command-line flags for each browser:
+
+<Tabs>
+  <Tab title="Chrome">
+    **Flag:** `--incognito`
+    
+    ```bash
+    open -a "Google Chrome" --args --incognito "https://example.com"
+    ```
+    
+    Opens the URL in Chrome's incognito mode.
+  </Tab>
+  
+  <Tab title="Firefox">
+    **Flag:** `-private-window`
+    
+    ```bash
+    open -a "Firefox" --args -private-window "https://example.com"
+    ```
+    
+    Opens the URL in Firefox's private browsing mode.
+  </Tab>
+  
+  <Tab title="Edge">
+    **Flag:** `-inprivate`
+    
+    ```bash
+    open -a "Microsoft Edge" --args -inprivate "https://example.com"
+    ```
+    
+    Opens the URL in Edge's InPrivate mode.
+  </Tab>
+  
+  <Tab title="Brave">
+    **Flag:** `--incognito`
+    
+    ```bash
+    open -a "Brave Browser" --args --incognito "https://example.com"
+    ```
+    
+    Opens the URL in Brave's private window.
+  </Tab>
+  
+  <Tab title="Opera">
+    **Flag:** `--private`
+    
+    ```bash
+    open -a "Opera" --args --private "https://example.com"
+    ```
+    
+    Opens the URL in Opera's private mode.
+  </Tab>
+  
+  <Tab title="Vivaldi">
+    **Flag:** `--incognito`
+    
+    ```bash
+    open -a "Vivaldi" --args --incognito "https://example.com"
+    ```
+    
+    Opens the URL in Vivaldi's incognito mode.
+  </Tab>
+</Tabs>
+
+### Browsers Without Command-Line Support
+
+<Warning>
+  **Safari** and **Arc** do not support command-line private mode flags. If you enable private mode for rules targeting these browsers, Default Tamer will open URLs in normal mode instead.
+</Warning>
+
+For Safari, private mode requires AppleScript automation, which is not currently supported. Arc does not provide command-line options for private windows.
+
+## Fallback Behavior
+
+When a rule specifies private mode:
+
+1. **Supported Browser:** Default Tamer opens the URL with the appropriate private mode flag
+2. **Unsupported Browser:** The URL opens in normal mode with a debug log message
+3. **Fallback Browser:** If the target browser is unavailable and Default Tamer falls back to another browser, private mode may not work on the fallback
+
+## Unknown Browsers
+
+For browsers not explicitly recognized, Default Tamer attempts to use the Chromium-based `--incognito` flag:
+
+```bash
+open -a "Unknown Browser" --args --incognito "https://example.com"
+```
+
+This works for most Chromium-based browsers but may fail for browsers built on other engines.
+
+## Use Cases
+
+### Sensitive Links
+Automatically open banking, healthcare, or other sensitive URLs in private mode:
+
+```yaml
+Rule: Domain contains "bank.com" → Chrome (Private Mode)
+```
+
+### Social Media Isolation
+Browse social media without tracking cookies:
+
+```yaml
+Rule: Domain suffix "twitter.com" → Firefox (Private Mode)
+Rule: Domain suffix "facebook.com" → Firefox (Private Mode)
+```
+
+### Work/Personal Separation
+Keep work-related browsing separate from your personal browsing history:
+
+```yaml
+Rule: From Slack → Chrome (Private Mode)
+Rule: From Microsoft Teams → Edge (Private Mode)
+```
+
+## Technical Details
+
+Private mode is implemented in `BrowserManager.swift:394-418` using the `getPrivateModeArguments()` method:
+
+```swift
+private func getPrivateModeArguments(for bundleId: String) -> [String] {
+    switch bundleId {
+    case BundleIdentifiers.chrome:
+        return ["--args", "--incognito"]
+    case BundleIdentifiers.firefox:
+        return ["--args", "-private-window"]
+    case BundleIdentifiers.edge:
+        return ["--args", "-inprivate"]
+    case BundleIdentifiers.brave:
+        return ["--args", "--incognito"]
+    case BundleIdentifiers.opera:
+        return ["--args", "--private"]
+    case BundleIdentifiers.vivaldi:
+        return ["--args", "--incognito"]
+    case BundleIdentifiers.safari:
+        return []
+    case BundleIdentifiers.arc:
+        return []
+    default:
+        return ["--args", "--incognito"]
+    }
+}
+```

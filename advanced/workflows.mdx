@@ -1,0 +1,359 @@
+---
+title: Real-World Workflows
+description: Practical examples of using Default Tamer for work/personal separation, project-based routing, and focused browsing
+---
+
+Default Tamer excels at creating sophisticated URL routing workflows. Here are proven patterns for common use cases.
+
+## Work/Personal Separation
+
+Keep your work and personal browsing completely isolated using separate browser profiles or browsers.
+
+### Strategy 1: Source-Based Routing
+
+Route URLs based on which application they come from:
+
+**Setup:**
+```yaml
+1. From Slack → Chrome (Work Profile)
+2. From Microsoft Teams → Edge (Work Account)
+3. From Mail (work account) → Chrome (Work Profile)
+4. Default → Safari (Personal)
+```
+
+**How it works:**
+- All links clicked in work apps (Slack, Teams) open in your work browser
+- Personal links and bookmarks open in Safari
+- Your browsing history, cookies, and sessions remain separate
+
+<Note>
+  This workflow leverages [source app detection](/advanced/source-detection) to automatically identify where links originate.
+</Note>
+
+### Strategy 2: Domain-Based Routing
+
+Route work domains to your work browser:
+
+**Setup:**
+```yaml
+1. Domain suffix "company.com" → Chrome (Work Profile)
+2. Domain suffix "slack.com" → Chrome (Work Profile)
+3. Domain suffix "github.com/company" → Chrome (Work Profile)
+4. Domain contains "jira" → Chrome (Work Profile)
+5. Default → Firefox (Personal)
+```
+
+**How it works:**
+- Company domains automatically open in your work browser
+- All other URLs use your personal browser
+- Works regardless of where the link comes from
+
+### Strategy 3: Hybrid Approach
+
+Combine source and domain routing for maximum flexibility:
+
+**Setup:**
+```yaml
+# Work apps always use work browser
+1. From Slack → Chrome (Work Profile)
+2. From Microsoft Teams → Chrome (Work Profile)
+
+# Work domains use work browser
+3. Domain suffix "company.com" → Chrome (Work Profile)
+4. Domain contains "atlassian.net" → Chrome (Work Profile)
+
+# Everything else is personal
+5. Default → Safari
+```
+
+**Benefits:**
+- Catches work links from any source (email, messages, documents)
+- Handles work apps that might open external URLs
+- Provides comprehensive work/personal isolation
+
+## Project-Based Routing
+
+Route URLs to different browsers based on projects or contexts.
+
+### Development Projects
+
+**Setup:**
+```yaml
+1. Domain contains "localhost" → Firefox (Dev Profile)
+2. Domain contains "127.0.0.1" → Firefox (Dev Profile)
+3. Domain suffix "dev.company.com" → Firefox (Dev Profile)
+4. From Cursor → Firefox (Dev Profile)
+5. From VS Code → Firefox (Dev Profile)
+```
+
+**Use case:**
+- Development URLs automatically open in a browser with dev tools
+- Local servers (localhost:3000) open in your dev browser
+- Links from code editors route to development context
+
+### Client Work Separation
+
+Isolate different client projects:
+
+**Setup:**
+```yaml
+# Client A
+1. Domain suffix "clienta.com" → Chrome (Profile: Client A)
+2. From Slack (workspace: Client A) → Chrome (Profile: Client A)
+
+# Client B  
+3. Domain suffix "clientb.com" → Firefox (Profile: Client B)
+4. From Slack (workspace: Client B) → Firefox (Profile: Client B)
+
+# Personal
+5. Default → Safari
+```
+
+**Benefits:**
+- Each client gets their own browser profile
+- Sessions, cookies, and credentials stay separate
+- Easy to see which context you're in by browser choice
+
+## Social Media Isolation
+
+Prevent tracking and maintain privacy on social platforms.
+
+### Private Mode for Social Media
+
+**Setup:**
+```yaml
+1. Domain suffix "twitter.com" → Firefox (Private Mode) ✓
+2. Domain suffix "facebook.com" → Firefox (Private Mode) ✓
+3. Domain suffix "instagram.com" → Firefox (Private Mode) ✓
+4. Domain suffix "linkedin.com" → Firefox (Private Mode) ✓
+5. Default → Chrome
+```
+
+**How it works:**
+- All social media links open in private browsing mode
+- No cookies or tracking data persists between sessions
+- Your main browser remains clean of social media tracking
+
+<Note>
+  Learn more about private mode support in the [Private Mode guide](/advanced/private-mode).
+</Note>
+
+### Dedicated Social Browser
+
+**Setup:**
+```yaml
+1. Domain suffix "twitter.com" → Firefox (Profile: Social)
+2. Domain suffix "facebook.com" → Firefox (Profile: Social)
+3. Domain suffix "reddit.com" → Firefox (Profile: Social)
+4. Domain suffix "youtube.com" → Firefox (Profile: Social)
+5. Default → Chrome
+```
+
+**Benefits:**
+- Social media contained to one browser profile
+- Prevents tracking across your normal browsing
+- Easy to close the social browser when you want to focus
+
+## Focus and Productivity
+
+Use routing to maintain focus and reduce distractions.
+
+### News and Entertainment Routing
+
+**Setup:**
+```yaml
+# News sites (read later)
+1. Domain contains "news" → Safari (Reading Profile)
+2. Domain suffix "medium.com" → Safari (Reading Profile)
+3. Domain suffix "substack.com" → Safari (Reading Profile)
+
+# Entertainment (separate context)
+4. Domain suffix "youtube.com" → Firefox (Entertainment)
+5. Domain suffix "netflix.com" → Firefox (Entertainment)
+
+# Work stays focused
+6. From Slack → Chrome (Work)
+7. Default → Chrome
+```
+
+**Strategy:**
+- Reading material goes to a dedicated browser you check during breaks
+- Entertainment sites isolated from work browser
+- Reduces temptation to check news during work
+
+### Deep Work Mode
+
+Route distracting domains to a browser you keep closed:
+
+**Setup:**
+```yaml
+# Distractions
+1. Domain suffix "reddit.com" → Arc (Social)
+2. Domain suffix "twitter.com" → Arc (Social) 
+3. Domain suffix "youtube.com" → Arc (Social)
+
+# Productive domains
+4. Domain contains "github" → Chrome (Work)
+5. Domain contains "stackoverflow" → Chrome (Work)
+6. From Slack → Chrome (Work)
+7. Default → Chrome (Work)
+```
+
+**Usage:**
+- Keep Arc closed during deep work sessions
+- Distracting links won't open in your main browser
+- Forces intentional context switch to access distractions
+
+## Banking and Security
+
+Enhance security for sensitive sites.
+
+### Private Mode for Financial Sites
+
+**Setup:**
+```yaml
+1. Domain contains "bank" → Safari (Private Mode) ✓
+2. Domain suffix "chase.com" → Safari (Private Mode) ✓
+3. Domain suffix "wellsfargo.com" → Safari (Private Mode) ✓
+4. Domain suffix "paypal.com" → Safari (Private Mode) ✓
+5. Default → Chrome
+```
+
+**Security benefits:**
+- No session data persists after closing the window
+- Reduces risk if your computer is compromised
+- Forces fresh login each time for additional verification
+
+<Warning>
+  Private mode is not available for Safari via command-line. See [Private Mode limitations](/advanced/private-mode#browsers-without-command-line-support).
+</Warning>
+
+### Dedicated Secure Browser
+
+**Setup:**
+```yaml
+1. Domain contains "bank" → Firefox (Profile: Financial)
+2. Domain suffix "paypal.com" → Firefox (Profile: Financial)
+3. Domain suffix "mint.com" → Firefox (Profile: Financial)
+4. Default → Chrome
+```
+
+**Best practices:**
+- Use Firefox with strict tracking protection
+- Install minimal extensions in the financial profile
+- Keep the browser closed when not actively using it
+
+## Shopping and Email
+
+Organize shopping and email workflows.
+
+### Shopping Isolation
+
+**Setup:**
+```yaml
+1. Domain suffix "amazon.com" → Edge (Shopping)
+2. Domain suffix "ebay.com" → Edge (Shopping)
+3. Domain suffix "etsy.com" → Edge (Shopping)
+4. Domain contains "shop" → Edge (Shopping)
+5. Default → Chrome
+```
+
+**Benefits:**
+- Shopping history and tracking isolated
+- Easy to clear shopping cookies/cache
+- Reduces targeted ads in your main browser
+
+### Email Link Routing
+
+**Setup:**
+```yaml
+# From work email
+1. From Mail → Chrome (Work Profile)
+
+# Newsletter links (read later)
+2. Domain suffix "medium.com" → Safari (Reading List)
+3. Domain suffix "substack.com" → Safari (Reading List)
+
+# Default
+4. Default → Chrome
+```
+
+**Strategy:**
+- Work emails open in work browser automatically
+- Newsletter content goes to reading browser
+- Helps maintain inbox zero by routing reading material appropriately
+
+## Advanced Patterns
+
+### URL Pattern Matching
+
+Use URL contains rules for precise routing:
+
+**Setup:**
+```yaml
+1. URL contains "/docs/" → Safari (Documentation)
+2. URL contains "/api/" → Firefox (API Testing)
+3. URL contains "localhost" → Firefox (Development)
+4. URL contains "staging" → Firefox (Development)
+```
+
+### Fallback Chains
+
+Configure primary and fallback browsers:
+
+**Setup:**
+```yaml
+# Primary: Chrome for work domains
+1. Domain suffix "company.com" → Chrome
+
+# If Chrome unavailable, Default Tamer falls back to Safari
+# Configure fallback browser in Settings
+```
+
+<Note>
+  Default Tamer automatically falls back to Safari if your target browser is unavailable. You can customize the fallback browser in Settings.
+</Note>
+
+## Tips for Effective Workflows
+
+### Start Simple
+Begin with 2-3 rules and add more as needed:
+```yaml
+1. From Slack → Chrome (Work)
+2. Default → Safari
+```
+
+### Use Descriptive Browser Profiles
+Name browser profiles clearly:
+- Chrome (Work)
+- Firefox (Dev)
+- Safari (Personal)
+- Edge (Shopping)
+
+### Test Your Rules
+After creating rules:
+1. Click links in source apps to verify routing
+2. Check that domains route to correct browsers
+3. Confirm private mode works as expected
+
+### Regular Maintenance
+Periodically review your rules:
+- Remove unused rules
+- Consolidate similar patterns
+- Update domain patterns for new services
+
+### Combine with Browser Features
+Enhance Default Tamer with browser capabilities:
+- Use browser profiles for additional separation
+- Enable strict tracking protection in privacy-focused profiles
+- Configure extensions per-profile for specific workflows
+
+## Getting Started
+
+1. **Identify your use case** from the examples above
+2. **Create 2-3 initial rules** in Default Tamer
+3. **Test the routing** by clicking links in various apps
+4. **Refine and expand** your rules based on your workflow
+5. **Set Default Tamer as your default browser** in System Settings
+
+Your routing rules will evolve with your workflow. Start simple and add complexity as you discover new patterns.

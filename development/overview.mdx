@@ -1,0 +1,153 @@
+---
+title: Contributing Overview
+description: Guidelines for contributing to Default Tamer, including code of conduct and pull request process
+---
+
+Thank you for your interest in contributing to Default Tamer! This guide will help you get started with contributing to the project.
+
+## Code of Conduct
+
+Be respectful, inclusive, and constructive in all interactions with the Default Tamer community.
+
+## How to Contribute
+
+### Reporting Bugs
+
+<Steps>
+  <Step title="Check existing issues">
+    Search the [Issues](https://github.com/0xdps/default-tamer/issues) page to see if the bug has already been reported.
+  </Step>
+  
+  <Step title="Create a new issue">
+    If the bug hasn't been reported, create a new issue with:
+    - Clear, descriptive title
+    - Steps to reproduce the behavior
+    - Expected vs actual behavior
+    - macOS version and Default Tamer version
+    - Relevant logs or screenshots
+  </Step>
+</Steps>
+
+### Suggesting Features
+
+<Steps>
+  <Step title="Check existing requests">
+    Review [Issues](https://github.com/0xdps/default-tamer/issues) to see if the feature has already been requested.
+  </Step>
+  
+  <Step title="Submit your feature request">
+    Create a new issue with:
+    - Clear description of the feature
+    - Use case and benefits
+    - Potential implementation approach (optional)
+  </Step>
+</Steps>
+
+## Pull Request Process
+
+<Steps>
+  <Step title="Fork and create a branch">
+    Fork the repository and create a feature branch:
+    ```bash
+    git checkout -b feature/your-feature-name
+    ```
+  </Step>
+  
+  <Step title="Make your changes">
+    Implement your changes following these guidelines:
+    - Follow existing code style and conventions
+    - Add comments for complex logic
+    - Update documentation if needed
+  </Step>
+  
+  <Step title="Test thoroughly">
+    Before submitting:
+    - Build and run the app
+    - Test affected functionality
+    - Verify no regressions in existing features
+    - Ensure app builds without warnings
+  </Step>
+  
+  <Step title="Commit and push">
+    Commit your changes with clear messages:
+    ```bash
+    git commit -m "Add feature: description"
+    git push origin feature/your-feature-name
+    ```
+  </Step>
+  
+  <Step title="Create Pull Request">
+    Submit a pull request with:
+    - Reference to related issues
+    - Description of what changed and why
+    - Screenshots for UI changes
+  </Step>
+</Steps>
+
+## Code Style Guidelines
+
+### Swift Style
+
+- Follow the [Swift API Design Guidelines](https://swift.org/documentation/api-design-guidelines/)
+- Use Xcode's default formatting (⌃I to reformat)
+- Choose clear, descriptive names for variables and functions
+- Write comments to explain "why", not "what"
+
+### Example
+
+```swift
+// Good: Explains the reasoning
+// Use enhanced detector with Apple Event support for better accuracy
+let detectionResult = SourceAppDetector.shared.detectSourceAppWithConfidence(from: event)
+
+// Avoid: States the obvious
+// Get the detection result
+let detectionResult = SourceAppDetector.shared.detectSourceAppWithConfidence(from: event)
+```
+
+## Testing Checklist
+
+Before submitting a pull request, ensure:
+
+- [ ] App builds without warnings
+- [ ] All existing features still work
+- [ ] New features work as expected
+- [ ] No memory leaks or crashes
+- [ ] Tested on supported macOS versions (13.0+)
+
+## Areas for Contribution
+
+<CardGroup cols={2}>
+  <Card title="Bug Fixes" icon="bug">
+    Check open issues for reported bugs that need fixing
+  </Card>
+  
+  <Card title="Features" icon="sparkles">
+    See the roadmap in README for planned features
+  </Card>
+  
+  <Card title="Documentation" icon="book">
+    Improve guides, comments, and developer documentation
+  </Card>
+  
+  <Card title="Testing" icon="flask">
+    Add test coverage and improve reliability
+  </Card>
+  
+  <Card title="UI/UX" icon="palette">
+    Enhance user experience and interface design
+  </Card>
+  
+  <Card title="Performance" icon="gauge">
+    Optimize routing logic and UI responsiveness
+  </Card>
+</CardGroup>
+
+## Getting Help
+
+- Open a [Discussion](https://github.com/0xdps/default-tamer/discussions) for questions
+- Comment on relevant issues for clarification
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the MIT License.

@@ -1,0 +1,440 @@
+---
+title: Architecture
+description: Project structure, key components, and design patterns in Default Tamer
+---
+
+Default Tamer is built with SwiftUI and follows a clear separation of concerns. This guide explains the project structure and key components.
+
+## Project Structure
+
+The main source code is organized in the `DefaultTamer/` directory:
+
+```
+DefaultTamer/
+├── Models/           # Data models
+├── Services/         # Business logic
+├── Views/            # SwiftUI views
+├── Utilities/        # Helper functions
+├── AppDelegate.swift
+└── DefaultTamerApp.swift
+```
+
+## Core Components
+
+### Models
+
+Data structures representing core concepts:
+
+<CodeGroup>
+```swift Browser.swift
+// Represents an installed browser
+struct Browser {
+    let id: String          // Bundle ID
+    let displayName: String
+    let icon: NSImage?
+}
+```
+
+```swift Rule.swift
+// URL routing rule
+struct Rule {
+    let id: UUID
+    var enabled: Bool
+    var type: RuleType      // .sourceApp, .domain, .urlPattern
+    var targetBrowserId: String
+    // Rule-specific properties
+    var sourceAppBundleId: String?
+    var domainPattern: String?
+    var domainMatchType: DomainMatchType?
+    var urlContains: String?
+    var urlRegex: String?
+}
+```
+
+```swift Settings.swift
+// App configuration
+struct Settings {
+    var enabled: Bool
+    var fallbackBrowserId: String
+    var diagnosticsEnabled: Bool
+    var launchAtLogin: Bool
+}
+```
+
+```swift RouteLog.swift
+// Activity log entry
+struct RouteLog {
+    let timestamp: Date
+    let url: URL
+    let sourceApp: String?
+    let targetBrowser: String
+    let matchedRule: String?
+}
+```
+</CodeGroup>
+
+<Card title="Models Directory" icon="database">
+  Also includes:
+  - `AppError.swift` - Error types
+  - `GitHubRelease.swift` - Update checking
+</Card>
+
+### Services
+
+Business logic and core functionality:
+
+#### AppState.swift
+
+Central state management for the entire app:
+
+```swift AppState.swift:13-31
+@MainActor
+class AppState: ObservableObject {
+    // Managers
+    let browserManager = BrowserManager()
+    let diagnosticsManager = DiagnosticsManager()
+    let persistence = PersistenceManager.shared
+    let toastManager = ToastManager.shared
+    
+    // Published state
+    @Published var settings: Settings
+    @Published private(set) var rules: [Rule]
+    @Published var showFirstRun: Bool
+    @Published var showRulesWindow = false
+    @Published var showChooser = false
+    @Published var chooserURL: URL?
+    @Published var chooserSourceApp: String?
+    @Published var pendingTabSelection: Int?
+}
+```
+
+<AccordionGroup>
+  <Accordion title="Key Responsibilities">
+    - Manages app-wide settings and rules
+    - Coordinates between different managers
+    - Handles URL routing requests
+    - Publishes state changes to views
+    - Thread-safe rule management via dispatch queue
+  </Accordion>
+  
+  <Accordion title="URL Handling Flow">
+    1. Receives URL from `AppDelegate`
+    2. Detects source application
+    3. Routes through `Router.route()`
+    4. Executes resulting action
+    5. Logs activity if diagnostics enabled
+  </Accordion>
+</AccordionGroup>
+
+#### Router.swift
+
+Pure routing decision engine:
+
+```swift Router.swift:17-58
+class Router {
+    /// Main routing decision function
+    static func route(
+        url: URL,
+        sourceApp: String?,
+        settings: Settings,
+        rules: [Rule],
+        modifierFlags: NSEvent.ModifierFlags?
+    ) -> RouteAction {
+        // Check if app is disabled
+        guard settings.enabled else {
+            return .openInFallback
+        }
+        
+        // Check for Option key to show chooser
+        if let flags = modifierFlags, flags.contains(.option) {
+            return .showChooser(url: url)
+        }
+        
+        // Evaluate rules top-to-bottom, first match wins
+        for rule in rules where rule.enabled {
+            if let action = evaluateRule(rule, url: url, sourceApp: sourceApp) {
+                return action
+            }
+        }
+        
+        // No rule matched, use fallback
+        return .openInFallback
+    }
+}
+```
+
+<Steps>
+  <Step title="Check app enabled">
+    If app is disabled, route to fallback browser immediately.
+  </Step>
+  
+  <Step title="Check modifier keys">
+    If Option key (⌥) is held, show browser chooser.
+  </Step>
+  
+  <Step title="Evaluate rules">
+    Process rules top-to-bottom. First matching rule wins.
+  </Step>
+  
+  <Step title="Apply fallback">
+    If no rules match, open in fallback browser.
+  </Step>
+</Steps>
+
+#### BrowserManager.swift
+
+Discovers and manages installed browsers:
+
+```swift
+class BrowserManager {
+    @Published var availableBrowsers: [Browser] = []
+    
+    func scanBrowsers()
+    func openURL(_ url: URL, inBrowser bundleId: String)
+    func openURLWithFallback(_ url: URL, 
+                            targetBrowserId: String,
+                            fallbackBrowserId: String,
+                            privateMode: Bool)
+    func isDefaultBrowser() -> Bool
+}
+```
+
+<Card title="Other Services" icon="gears">
+  - `PersistenceManager.swift` - UserDefaults storage
+  - `DiagnosticsManager.swift` - Activity logging
+  - `SourceAppDetector.swift` - Source app detection
+  - `ActivityDatabase.swift` - SQLite logging
+  - `UpdateManager.swift` - Sparkle updates
+</Card>
+
+### Views
+
+SwiftUI views for the user interface:
+
+<CardGroup cols={2}>
+  <Card title="MenuBarPopover.swift" icon="bars">
+    Menu bar dropdown showing app status, preferences, and rules access
+  </Card>
+  
+  <Card title="FirstRunView.swift" icon="flag">
+    Onboarding window shown on first launch
+  </Card>
+  
+  <Card title="PreferencesWindow.swift" icon="gear">
+    Settings and configuration interface
+  </Card>
+  
+  <Card title="RulesWindow.swift" icon="list">
+    Rule management interface with drag-to-reorder
+  </Card>
+  
+  <Card title="BrowserChooser.swift" icon="hand-pointer">
+    Manual browser selection dialog (shown when holding Option)
+  </Card>
+  
+  <Card title="RecentRoutesView.swift" icon="clock">
+    Activity log viewer (when diagnostics enabled)
+  </Card>
+</CardGroup>
+
+### Utilities
+
+Helper functions and extensions:
+
+<AccordionGroup>
+  <Accordion title="Logging & Debugging">
+    - `UnifiedLogger.swift` - Centralized logging
+    - `DebugLog.swift` - Debug output helpers
+    - `Logging.swift` - Log utilities
+  </Accordion>
+  
+  <Accordion title="URL Processing">
+    - `URLSanitizer.swift` - Strips sensitive data from URLs
+    - `URLHelpers.swift` - URL parsing and validation
+    - `RegexValidator.swift` - Regex pattern validation
+  </Accordion>
+  
+  <Accordion title="App Integration">
+    - `LaunchAtLogin.swift` - Launch at login management
+    - `ApplicationScanner.swift` - Finds installed apps
+    - `AppResolver.swift` - Resolves bundle IDs to apps
+  </Accordion>
+  
+  <Accordion title="UI Utilities">
+    - `ToastManager.swift` - Toast notifications
+    - `ErrorNotification.swift` - Error alerts
+    - `Color+Extensions.swift` - Color helpers
+    - `Constants.swift` - UI constants
+  </Accordion>
+  
+  <Accordion title="Data Management">
+    - `RuleImportExport.swift` - Rule backup/restore
+    - `ErrorHandler.swift` - Error handling
+  </Accordion>
+</AccordionGroup>
+
+## Application Entry Points
+
+### DefaultTamerApp.swift
+
+Main SwiftUI app structure:
+
+```swift
+@main
+struct DefaultTamerApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    
+    var body: some Scene {
+        Settings {
+            EmptyView()
+        }
+    }
+}
+```
+
+<Note>
+The app uses `NSApplicationDelegateAdaptor` to integrate AppKit functionality while maintaining a SwiftUI structure.
+</Note>
+
+### AppDelegate.swift
+
+AppKit delegate for system integration:
+
+```swift AppDelegate.swift:25-114
+func applicationDidFinishLaunching(_ notification: Notification) {
+    // Set as menu bar only app (no dock icon)
+    NSApp.setActivationPolicy(.accessory)
+    
+    // Create menu bar status item
+    statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    
+    // Build menu with SwiftUI views
+    menu = NSMenu()
+    
+    // Register for URL events
+    NSAppleEventManager.shared().setEventHandler(
+        self,
+        andSelector: #selector(handleGetURLEvent(_:withReplyEvent:)),
+        forEventClass: AEEventClass(kInternetEventClass),
+        andEventID: AEEventID(kAEGetURL)
+    )
+    
+    // Show first run if needed
+    if appState.showFirstRun {
+        showFirstRunWindow()
+    }
+}
+```
+
+<Steps>
+  <Step title="Initialize menu bar">
+    Creates status bar item with icon and menu
+  </Step>
+  
+  <Step title="Register URL handler">
+    Listens for `kAEGetURL` Apple Events to receive URLs
+  </Step>
+  
+  <Step title="Setup window management">
+    Manages preferences, first-run, and chooser windows
+  </Step>
+  
+  <Step title="Handle URL events">
+    Routes incoming URLs through the routing system
+  </Step>
+</Steps>
+
+## Data Flow
+
+Here's how a URL flows through the application:
+
+```mermaid
+sequence
+  participant User
+  participant System
+  participant AppDelegate
+  participant AppState
+  participant Router
+  participant BrowserManager
+  participant Browser
+  
+  User->>System: Click URL in Slack
+  System->>AppDelegate: handleGetURLEvent()
+  AppDelegate->>AppState: handleURL(url, sourceApp)
+  AppState->>Router: route(url, sourceApp, settings, rules)
+  Router-->>AppState: RouteAction
+  AppState->>BrowserManager: openURL(url, browserId)
+  BrowserManager->>Browser: Open URL
+  Browser-->>User: Display webpage
+```
+
+<Steps>
+  <Step title="URL interception">
+    macOS sends URL to Default Tamer via Apple Event
+  </Step>
+  
+  <Step title="Source detection">
+    `SourceAppDetector` identifies which app sent the URL
+  </Step>
+  
+  <Step title="Rule evaluation">
+    `Router` evaluates rules top-to-bottom to find a match
+  </Step>
+  
+  <Step title="Browser selection">
+    Matched rule determines target browser (or uses fallback)
+  </Step>
+  
+  <Step title="URL opening">
+    `BrowserManager` opens URL in selected browser
+  </Step>
+  
+  <Step title="Activity logging">
+    If diagnostics enabled, logs the routing decision
+  </Step>
+</Steps>
+
+## Design Patterns
+
+### ObservableObject Pattern
+
+`AppState` uses SwiftUI's `ObservableObject` protocol:
+
+```swift
+@MainActor
+class AppState: ObservableObject {
+    @Published var settings: Settings
+    @Published private(set) var rules: [Rule]
+}
+```
+
+Views automatically update when published properties change.
+
+### Manager Pattern
+
+Separate managers handle specific concerns:
+- `BrowserManager` - Browser discovery and launching
+- `PersistenceManager` - Data storage
+- `DiagnosticsManager` - Activity logging
+- `UpdateManager` - Software updates
+
+### Pure Functions
+
+`Router.route()` is a pure function with no side effects:
+- Takes all needed data as parameters
+- Returns a decision (RouteAction)
+- Does not modify state or perform I/O
+
+This makes routing logic testable and predictable.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Building" icon="hammer" href="/development/building">
+    Learn how to build and run the app
+  </Card>
+  
+  <Card title="Contributing" icon="code-pull-request" href="/development/overview">
+    Read the contribution guidelines
+  </Card>
+</CardGroup>

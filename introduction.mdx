@@ -1,0 +1,128 @@
+---
+title: Introduction
+description: Default Tamer is a macOS menu bar app that intelligently routes URLs to the correct browser based on source app and URL rules.
+---
+
+## What is Default Tamer?
+
+Default Tamer is a macOS menu bar utility that acts as your system's default browser — but instead of opening URLs itself, it intelligently routes them to the right browser based on where the link came from and what URL it points to.
+
+**Set Default Tamer as your default browser once — from then on, your links open exactly where you want them.**
+
+<Note>
+Default Tamer requires macOS 13.0 or later and is built with Swift 5.9.
+</Note>
+
+## How It Works
+
+When you click a link anywhere on your Mac, Default Tamer evaluates your rules in order. The first matching rule wins, and unmatched links go to your fallback browser.
+
+```swift
+// Router.swift:21-58
+static func route(
+    url: URL,
+    sourceApp: String?,
+    settings: Settings,
+    rules: [Rule],
+    modifierFlags: NSEvent.ModifierFlags?
+) -> RouteAction
+```
+
+Rules are evaluated top-to-bottom:
+1. Check if app is enabled
+2. Check for Option key override (shows manual browser chooser)
+3. Evaluate each enabled rule until one matches
+4. Fall back to default browser if no rules match
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Smart Routing" icon="route">
+    Route links based on source app (Slack, Cursor, etc.) and URL patterns
+  </Card>
+  <Card title="Domain Rules" icon="globe">
+    Send specific domains to specific browsers with exact, suffix, or contains matching
+  </Card>
+  <Card title="Override Chooser" icon="hand-pointer">
+    Hold ⌥ Option while clicking any link to manually pick a browser
+  </Card>
+  <Card title="Fallback Browser" icon="browser">
+    Configurable default for unmatched links
+  </Card>
+  <Card title="Launch at Login" icon="power-off">
+    Optionally start at system login
+  </Card>
+  <Card title="Activity Logging" icon="list">
+    Optional, privacy-first diagnostic log of recent routes
+  </Card>
+</CardGroup>
+
+## Rule Types
+
+Default Tamer supports three types of routing rules:
+
+### Source App Rules
+
+Route links based on which application sent them.
+
+**Example:** All links from Slack open in Chrome
+
+```swift
+// Rule.swift:72-86
+static func slackToChrome() -> Rule {
+    var rule = Rule(type: .sourceApp, targetBrowserId: "com.google.Chrome")
+    
+    if let bundleId = AppResolver.resolveBundleId(forAppNamed: "Slack") {
+        rule.sourceAppBundleId = bundleId
+        rule.sourceAppName = "Slack"
+    }
+    
+    return rule
+}
+```
+
+### Domain Rules
+
+Route based on the domain with three matching types:
+
+- **Exact**: `github.com` matches only github.com (also normalizes www.github.com)
+- **Suffix**: `.atlassian.net` matches mycompany.atlassian.net, jira.atlassian.net, etc.
+- **Contains**: `jira` matches any domain containing "jira"
+
+**Example:** All GitHub URLs open in Firefox
+
+### URL Pattern Rules
+
+Route based on URL content:
+
+- **Contains**: Simple string matching (e.g., `/admin` matches any URL with /admin)
+- **Regex**: Advanced pattern matching with full regex support
+
+**Example:** All URLs containing `/admin` open in Safari
+
+## Privacy First
+
+<Check>
+  All processing is local — no network calls, no telemetry
+</Check>
+
+<Check>
+  Stores no personal information
+</Check>
+
+<Check>
+  Activity logging is opt-in; URLs are sanitized before storage (tokens, API keys, secrets are stripped)
+</Check>
+
+Default Tamer never sends your browsing data anywhere. Everything happens on your Mac.
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Download and set up Default Tamer as your default browser
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Create your first routing rule in under 2 minutes
+  </Card>
+</CardGroup>

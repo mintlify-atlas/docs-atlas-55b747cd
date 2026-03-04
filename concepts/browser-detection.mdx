@@ -1,0 +1,563 @@
+---
+title: "Browser Detection"
+description: "How Default Tamer discovers, caches, and manages installed browsers"
+---
+
+## Overview
+
+Default Tamer automatically discovers all installed browsers on your Mac by querying macOS LaunchServices. The system maintains a cached list of browsers for performance, with intelligent background refresh to stay up-to-date.
+
+## Discovery Process
+
+### LaunchServices Integration
+
+Default Tamer uses macOS LaunchServices API to find all applications capable of handling HTTP/HTTPS URLs:
+
+```swift
+// BrowserManager.swift:171-193
+if let httpURL = URL(string: "http://"),
+   let httpHandlers = LSCopyApplicationURLsForURL(
+       httpURL as CFURL, 
+       .all
+   )?.takeRetainedValue() as? [URL] {
+    
+    for appURL in httpHandlers {
+        if let bundle = Bundle(url: appURL),
+           let bundleId = bundle.bundleIdentifier,
+           !seenBundleIds.contains(bundleId),
+           bundleId != currentBundleId,
+           !excludedBundleIds.contains(bundleId),
+           isBrowserApp(bundleId: bundleId, appURL: appURL) {
+            
+            if let displayName = getDisplayName(for: bundleId) {
+                if !seenDisplayNames.contains(displayName) {
+                    discovered.append(Browser(
+                        bundleId: bundleId, 
+                        displayName: displayName, 
+                        isInstalled: true
+                    ))
+                }
+            }
+        }
+    }
+}
+```
+
+<Steps>
+  <Step title="Query LaunchServices">
+    Ask macOS for all apps registered to handle `http://` and `https://` URL schemes
+  </Step>
+  
+  <Step title="Filter Applications">
+    Filter out terminal emulators, text editors, and other non-browser apps
+  </Step>
+  
+  <Step title="Extract Metadata">
+    Get the bundle identifier and display name for each valid browser
+  </Step>
+  
+  <Step title="Deduplicate">
+    Remove duplicates based on bundle ID and display name
+  </Step>
+  
+  <Step title="Sort and Cache">
+    Sort browsers alphabetically and cache the results
+  </Step>
+</Steps>
+
+## Browser Filtering
+
+### Excluded Applications
+
+Not every app that can open URLs is a browser. Default Tamer filters out:
+
+```swift
+// BrowserManager.swift:162-169
+let excludedBundleIds: Set<String> = [
+    "com.googlecode.iterm2",           // iTerm2
+    "com.apple.Terminal",               // Terminal
+    "com.choosyosx.choosy",            // Choosy
+    "com.choosyosx.choosy.3",          // Choosy 3
+    "com.apple.Safari.WebApp",         // Safari Web Apps
+    "com.apple.WebKit.WebContent",     // WebKit Helper
+]
+```
+
+### Browser Detection Logic
+
+The `isBrowserApp()` function uses multiple heuristics to identify actual web browsers:
+
+<Tabs>
+  <Tab title="Exclusion Filters">
+    First, exclude known non-browser applications:
+    
+    ```swift
+    // BrowserManager.swift:230-253
+    // Exclude terminal emulators
+    if lowercasedId.contains("terminal") || 
+       lowercasedId.contains("iterm") ||
+       lowercasedId.contains("console") {
+        return false
+    }
+    
+    // Exclude text editors
+    if lowercasedId.contains("textedit") ||
+       lowercasedId.contains("sublimetext") ||
+       lowercasedId.contains("vscode") ||
+       lowercasedId.contains("xcode") {
+        return false
+    }
+    
+    // Exclude other browser managers
+    if lowercasedId.contains("choosy") ||
+       lowercasedId.contains("browserosaurus") ||
+       lowercasedId.contains("finicky") {
+        return false
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Known Browsers">
+    Check if the bundle ID contains known browser keywords:
+    
+    ```swift
+    // BrowserManager.swift:256-267
+    let knownBrowsers = [
+        "safari", "chrome", "firefox", "edge", "brave",
+        "opera", "vivaldi", "arc", "orion", "webkit",
+        "chromium", "browser", "navigator", "atlas",
+        "mozilla", "nightly", "developer.edition"
+    ]
+    
+    for browser in knownBrowsers {
+        if lowercasedId.contains(browser) {
+            return true
+        }
+    }
+    ```
+  </Tab>
+  
+  <Tab title="App Category">
+    Check the app's category in its Info.plist:
+    
+    ```swift
+    // BrowserManager.swift:270-276
+    if let bundle = Bundle(url: appURL),
+       let category = bundle.infoDictionary?["LSApplicationCategoryType"] as? String {
+        // Accept apps in the "Web Browser" category
+        if category == "public.app-category.web-browser" {
+            return true
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  **Conservative Approach**: If Default Tamer isn't sure whether an app is a browser, it errs on the side of exclusion to keep the browser list clean.
+</Note>
+
+## Caching System
+
+### Why Cache?
+
+Discovering browsers via LaunchServices is relatively expensive (can take 100-500ms). To maintain a snappy user experience, Default Tamer implements an intelligent caching system.
+
+### Cache Strategy
+
+<CodeGroup>
+```swift Cache Keys
+// BrowserManager.swift:50-55
+private static let cacheKey = "defaultTamer.cachedBrowsers"
+private static let cacheVersionKey = "defaultTamer.browserCacheVersion"
+private static let cacheTimestampKey = "defaultTamer.browserCacheTimestamp"
+private static let currentCacheVersion = 2
+private static let cacheExpirationInterval: TimeInterval = 86400 // 24 hours
+```
+
+```swift Cache Validation
+// BrowserManager.swift:62-84
+// Check cache version
+let cachedVersion = defaults.integer(forKey: Self.cacheVersionKey)
+guard cachedVersion == Self.currentCacheVersion else {
+    discoverBrowsers()  // Version mismatch, rediscover
+    return
+}
+
+// Check cache expiration
+if let timestamp = defaults.object(forKey: Self.cacheTimestampKey) as? Date {
+    let age = Date().timeIntervalSince(timestamp)
+    if age > Self.cacheExpirationInterval {
+        discoverBrowsers()  // Cache expired, rediscover
+        return
+    }
+}
+```
+</CodeGroup>
+
+### Cache Lifecycle
+
+<Steps>
+  <Step title="Load on Launch">
+    When Default Tamer starts, it loads browsers from cache if valid
+  </Step>
+  
+  <Step title="Background Refresh">
+    A background task refreshes the browser list without blocking the UI
+    ```swift
+    // BrowserManager.swift:94-96
+    Task.detached(priority: .background) {
+        await self.refreshBrowsersInBackground()
+    }
+    ```
+  </Step>
+  
+  <Step title="Intelligent Update">
+    Only update the list if browsers have changed
+    ```swift
+    // BrowserManager.swift:112-118
+    if newBrowsers != availableBrowsers {
+        availableBrowsers = newBrowsers
+        saveBrowserCache()
+    }
+    ```
+  </Step>
+  
+  <Step title="Manual Refresh">
+    Users can manually refresh the browser list via settings
+    ```swift
+    // BrowserManager.swift:135-138
+    func refreshBrowsers() {
+        discoverBrowsers()
+    }
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  **Performance**: The cache expires after 24 hours, but browsers are refreshed in the background on each app launch. This ensures the list stays current without impacting responsiveness.
+</Tip>
+
+## Browser Metadata
+
+### Display Names
+
+Default Tamer extracts human-readable names from browser bundles:
+
+```swift
+// BrowserManager.swift:283-297
+private func getDisplayName(for bundleId: String) -> String? {
+    // Try to get from bundle
+    if let appURL = NSWorkspace.shared.urlForApplication(
+        withBundleIdentifier: bundleId
+    ),
+       let bundle = Bundle(url: appURL),
+       let displayName = bundle.infoDictionary?["CFBundleDisplayName"] as? String 
+           ?? bundle.infoDictionary?["CFBundleName"] as? String {
+        return displayName
+    }
+    
+    // Fallback: use app name from URL
+    if let appURL = NSWorkspace.shared.urlForApplication(
+        withBundleIdentifier: bundleId
+    ) {
+        return appURL.deletingPathExtension().lastPathComponent
+    }
+    
+    return nil
+}
+```
+
+<Tabs>
+  <Tab title="Preferred Name">
+    `CFBundleDisplayName` from the app's Info.plist
+    
+    **Example**: "Google Chrome" for `com.google.Chrome`
+  </Tab>
+  
+  <Tab title="Fallback Name">
+    `CFBundleName` from the app's Info.plist
+    
+    **Example**: "Chrome" for `com.google.Chrome`
+  </Tab>
+  
+  <Tab title="Last Resort">
+    The app's filename without the `.app` extension
+    
+    **Example**: "Google Chrome" from `/Applications/Google Chrome.app`
+  </Tab>
+</Tabs>
+
+## Opening URLs
+
+### Standard Opening
+
+```swift
+// BrowserManager.swift:322-353
+private func safeOpenURL(_ url: URL, inBrowser bundleId: String) throws {
+    // Verify browser is installed
+    guard let appURL = safeURLForApplication(
+        withBundleIdentifier: bundleId
+    ) else {
+        throw BrowserError.notInstalled(bundleId: bundleId)
+    }
+    
+    // Verify URL is accessible
+    guard FileManager.default.fileExists(atPath: appURL.path) else {
+        throw BrowserError.notAccessible(bundleId: bundleId)
+    }
+    
+    let configuration = NSWorkspace.OpenConfiguration()
+    configuration.activates = true
+    
+    // Use completion handler to catch async errors
+    var openError: Error?
+    let semaphore = DispatchSemaphore(value: 0)
+    
+    NSWorkspace.shared.open(
+        [url], 
+        withApplicationAt: appURL, 
+        configuration: configuration
+    ) { _, error in
+        openError = error
+        semaphore.signal()
+    }
+    
+    // Wait for open operation (with timeout)
+    _ = semaphore.wait(timeout: .now() + 5.0)
+    
+    if let error = openError {
+        throw BrowserError.openFailed(bundleId: bundleId, underlying: error)
+    }
+}
+```
+
+### Private/Incognito Mode
+
+Default Tamer supports opening URLs in private mode for browsers that support command-line arguments:
+
+```swift
+// BrowserManager.swift:394-418
+private func getPrivateModeArguments(for bundleId: String) -> [String] {
+    switch bundleId {
+    case BundleIdentifiers.chrome:
+        return ["--args", "--incognito"]
+    case BundleIdentifiers.firefox:
+        return ["--args", "-private-window"]
+    case BundleIdentifiers.edge:
+        return ["--args", "-inprivate"]
+    case BundleIdentifiers.brave:
+        return ["--args", "--incognito"]
+    case BundleIdentifiers.opera:
+        return ["--args", "--private"]
+    case BundleIdentifiers.vivaldi:
+        return ["--args", "--incognito"]
+    case BundleIdentifiers.safari:
+        // Safari requires AppleScript, not supported via CLI
+        return []
+    case BundleIdentifiers.arc:
+        // Arc doesn't have CLI private mode support
+        return []
+    default:
+        // Unknown browser - try generic Chromium flag
+        return ["--args", "--incognito"]
+    }
+}
+```
+
+<Note>
+  **Browser Support**: Safari and Arc don't support private mode via command-line arguments. URLs will open in normal mode for these browsers even if the rule specifies private mode.
+</Note>
+
+### Fallback Chain
+
+If a target browser isn't available, Default Tamer follows a fallback chain:
+
+```swift
+// BrowserManager.swift:442-472
+func openURLWithFallback(
+    _ url: URL, 
+    targetBrowserId: String, 
+    fallbackBrowserId: String, 
+    privateMode: Bool = false
+) {
+    // Try target browser first
+    if openURL(url, inBrowser: targetBrowserId, privateMode: privateMode) {
+        return
+    }
+
+    // Notify user of fallback
+    let browserName = getBrowser(byId: targetBrowserId)?.displayName 
+        ?? "target browser"
+    ToastManager.shared.warning(
+        "\(browserName) unavailable, using fallback browser",
+        duration: 3.0
+    )
+
+    // Use fallback
+    if openURL(url, inBrowser: fallbackBrowserId, privateMode: privateMode) {
+        return
+    }
+    
+    // Last resort: Safari
+    if fallbackBrowserId != BundleIdentifiers.safari {
+        ToastManager.shared.error(
+            "Fallback browser unavailable, using Safari",
+            duration: 3.5
+        )
+        _ = openURL(url, inBrowser: BundleIdentifiers.safari)
+    }
+}
+```
+
+<Steps>
+  <Step title="Try Target Browser">
+    Attempt to open in the browser specified by the matched rule
+  </Step>
+  
+  <Step title="Try Fallback Browser">
+    If target fails, use the user's configured fallback browser
+  </Step>
+  
+  <Step title="Try Safari">
+    If fallback fails, use Safari as the last resort (always available on macOS)
+  </Step>
+</Steps>
+
+## Default Browser Management
+
+### Checking Default Status
+
+```swift
+// BrowserManager.swift:482-500
+func isDefaultBrowser() -> Bool {
+    guard let bundleId = Bundle.main.bundleIdentifier else { return false }
+    
+    // Check http handler
+    if let httpHandler = LSCopyDefaultHandlerForURLScheme("http" as CFString)
+        ?.takeRetainedValue() as String? {
+        if httpHandler == bundleId {
+            return true
+        }
+    }
+    
+    // Check https handler
+    if let httpsHandler = LSCopyDefaultHandlerForURLScheme("https" as CFString)
+        ?.takeRetainedValue() as String? {
+        if httpsHandler == bundleId {
+            return true
+        }
+    }
+    
+    return false
+}
+```
+
+### Setting as Default
+
+```swift
+// BrowserManager.swift:503-514
+func requestSetAsDefault() -> Bool {
+    guard let bundleId = Bundle.main.bundleIdentifier else { return false }
+    
+    // Set as default for http
+    LSSetDefaultHandlerForURLScheme("http" as CFString, bundleId as CFString)
+    
+    // Set as default for https
+    LSSetDefaultHandlerForURLScheme("https" as CFString, bundleId as CFString)
+    
+    return true
+}
+```
+
+<Warning>
+  **User Consent**: On macOS 12 (Monterey) and later, changing the default browser requires explicit user approval through a system dialog. The `LSSetDefaultHandlerForURLScheme` call will trigger this dialog.
+</Warning>
+
+## Error Handling
+
+Default Tamer defines specific error types for browser operations:
+
+```swift
+// BrowserManager.swift:13-44
+enum BrowserError: LocalizedError {
+    case notInstalled(bundleId: String)
+    case notAccessible(bundleId: String)
+    case openFailed(bundleId: String, underlying: Error)
+    case noFallbackAvailable
+    
+    var errorDescription: String? {
+        switch self {
+        case .notInstalled(let bundleId):
+            return "Browser '\(bundleId)' is not installed"
+        case .notAccessible(let bundleId):
+            return "Browser '\(bundleId)' cannot be accessed"
+        case .openFailed(let bundleId, let error):
+            return "Failed to open URL with '\(bundleId)': \(error.localizedDescription)"
+        case .noFallbackAvailable:
+            return "No fallback browser available"
+        }
+    }
+    
+    var recoverySuggestion: String? {
+        switch self {
+        case .notInstalled:
+            return "Please install the browser or update your routing rules."
+        case .notAccessible:
+            return "Check that the browser is properly installed with necessary permissions."
+        case .openFailed:
+            return "Try opening the URL manually or use a different browser."
+        case .noFallbackAvailable:
+            return "Please install Safari or Chrome to use as a fallback browser."
+        }
+    }
+}
+```
+
+<CardGroup cols={2}>
+  <Card title="Not Installed" icon="circle-xmark">
+    Browser's bundle ID is not registered with LaunchServices
+  </Card>
+  <Card title="Not Accessible" icon="lock">
+    Browser app exists but file cannot be accessed (permissions issue)
+  </Card>
+  <Card title="Open Failed" icon="triangle-exclamation">
+    NSWorkspace failed to open the URL (may include underlying system error)
+  </Card>
+  <Card title="No Fallback" icon="ban">
+    Neither target nor fallback browser is available (rare)
+  </Card>
+</CardGroup>
+
+## Performance Characteristics
+
+<ResponseField name="Initial Discovery" type="~200-500ms">
+  First-time browser discovery via LaunchServices
+</ResponseField>
+
+<ResponseField name="Cache Load" type="<5ms">
+  Loading browsers from UserDefaults cache
+</ResponseField>
+
+<ResponseField name="Background Refresh" type="~200-500ms">
+  Non-blocking refresh in background thread
+</ResponseField>
+
+<ResponseField name="URL Opening" type="~50-200ms">
+  Opening a URL in a browser (includes app activation)
+</ResponseField>
+
+<Tip>
+  **Optimization**: The caching system ensures that Default Tamer's overhead when routing URLs is minimal (under 10ms for rule evaluation + cache lookup).
+</Tip>
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Routing Engine" icon="route" href="/concepts/routing">
+    How routing decisions are made using discovered browsers
+  </Card>
+  <Card title="Rule Types" icon="filter" href="/concepts/rule-types">
+    Configure rules to route URLs to specific browsers
+  </Card>
+</CardGroup>

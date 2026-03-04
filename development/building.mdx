@@ -1,0 +1,244 @@
+---
+title: Building the App
+description: Development setup, prerequisites, build commands, and testing for Default Tamer
+---
+
+This guide covers everything you need to build and run Default Tamer locally.
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+<CardGroup cols={3}>
+  <Card title="macOS" icon="apple">
+    macOS 13.0 or later
+  </Card>
+  
+  <Card title="Xcode" icon="hammer">
+    Xcode 14.0 or later
+  </Card>
+  
+  <Card title="just" icon="terminal">
+    Command runner tool
+  </Card>
+</CardGroup>
+
+### Installing just
+
+The project uses [`just`](https://github.com/casey/just) as a command runner. Install it via Homebrew:
+
+```bash
+brew install just
+```
+
+## Getting Started
+
+<Steps>
+  <Step title="Clone the repository">
+    Clone the repository with submodules:
+    ```bash
+    git clone --recurse-submodules https://github.com/0xdps/default-tamer.git
+    cd default-tamer
+    ```
+  </Step>
+  
+  <Step title="Build and run">
+    Use `just` to build and deploy the app:
+    ```bash
+    just deploy
+    ```
+    This performs a fast rebuild and launches the app.
+  </Step>
+  
+  <Step title="Set as default browser">
+    Once the app launches:
+    1. Click "Open System Settings" in the first-run window
+    2. Go to System Settings → Desktop & Dock → Default web browser
+    3. Select **Default Tamer**
+  </Step>
+</Steps>
+
+## Common Commands
+
+The project includes several `just` commands for development:
+
+<CodeGroup>
+```bash Development
+# Fast rebuild + deploy (ideal for UI iteration)
+just deploy
+
+# Full clean rebuild from scratch
+just fresh
+
+# Stream live app logs
+just logs
+
+# Dump current UserDefaults settings
+just settings
+```
+
+```bash Testing
+# Reset first-run flag to test onboarding
+just reset
+
+# Wipe all app data and settings
+just reset-all
+```
+
+```bash Release
+# Bump version, tag, and push (triggers CI release)
+just bump 0.0.2
+```
+</CodeGroup>
+
+<Tip>
+Run `just --list` or simply `just` to see all available commands.
+</Tip>
+
+## Development Workflow
+
+### Quick Iteration
+
+For rapid UI development:
+
+```bash
+just deploy
+```
+
+This command:
+1. Performs an incremental build
+2. Kills any running instance
+3. Launches the new build
+
+### Clean Rebuild
+
+If you encounter build issues or want a fresh start:
+
+```bash
+just fresh
+```
+
+This performs a full clean build and launches the app.
+
+### Viewing Logs
+
+To monitor app behavior in real-time:
+
+```bash
+just logs
+```
+
+This streams live logs from the app, showing:
+- URL routing decisions
+- Source app detection
+- Rule evaluation
+- Browser selection
+
+### Debugging Settings
+
+To inspect current app settings:
+
+```bash
+just settings
+```
+
+This dumps all UserDefaults values for debugging.
+
+## Testing
+
+### Manual Testing
+
+Before submitting changes:
+
+1. **Build verification**
+   - Ensure app builds without warnings
+   - Check for Swift compiler errors
+
+2. **Functionality testing**
+   - Test your specific changes
+   - Verify existing features still work
+   - Test edge cases
+
+3. **Performance testing**
+   - Check for memory leaks
+   - Verify no crashes
+   - Test on supported macOS versions
+
+### Testing First-Run Experience
+
+To reset the first-run flag:
+
+```bash
+just reset
+```
+
+This allows you to test the onboarding experience again.
+
+### Complete Reset
+
+To wipe all app data and start fresh:
+
+```bash
+just reset-all
+```
+
+<Warning>
+This deletes all rules, settings, and logs. Use with caution.
+</Warning>
+
+## Troubleshooting
+
+### Build Fails
+
+If you encounter build errors:
+
+1. Try a clean rebuild:
+   ```bash
+   just fresh
+   ```
+
+2. Verify Xcode version:
+   ```bash
+   xcodebuild -version
+   ```
+   Should be 14.0 or later.
+
+3. Check submodules:
+   ```bash
+   git submodule update --init --recursive
+   ```
+
+### App Won't Launch
+
+If the app fails to launch:
+
+1. Check the logs:
+   ```bash
+   just logs
+   ```
+
+2. Try a complete reset:
+   ```bash
+   just reset-all
+   just deploy
+   ```
+
+### Permission Issues
+
+If you encounter permission errors:
+
+1. Check System Settings → Privacy & Security
+2. Grant necessary permissions to Default Tamer
+3. Restart the app
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Architecture" icon="sitemap" href="/development/architecture">
+    Understand the project structure and key components
+  </Card>
+  
+  <Card title="Contributing" icon="code-pull-request" href="/development/overview">
+    Learn about the contribution process
+  </Card>
+</CardGroup>

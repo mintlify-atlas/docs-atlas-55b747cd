@@ -1,0 +1,218 @@
+---
+title: Frequently Asked Questions
+description: Common questions about Default Tamer installation, configuration, and usage
+---
+
+<AccordionGroup>
+
+<Accordion title="How do I install Default Tamer?">
+
+1. Download the latest DMG from the [Releases page](https://github.com/0xdps/default-tamer/releases/latest)
+2. Open the DMG and drag Default Tamer to your Applications folder
+3. Launch Default Tamer from Applications
+4. Click "Open System Settings" in the first-run window
+5. Navigate to System Settings → Desktop & Dock → Default web browser
+6. Select **Default Tamer** from the list
+
+That's it! Default Tamer is now your default browser and will route links based on your rules.
+
+</Accordion>
+
+<Accordion title="What macOS versions are supported?">
+
+Default Tamer requires **macOS 13.0 (Ventura) or later**. It's built with Swift 5.9 and SwiftUI.
+
+</Accordion>
+
+<Accordion title="How do routing rules work?">
+
+Rules are evaluated in order from top to bottom. **The first matching rule wins**. If no rule matches, the link opens in your configured fallback browser.
+
+You can create rules based on:
+
+- **Source App**: Route all links from a specific app (e.g., Slack → Chrome)
+- **Domain (exact)**: Match exact domains (e.g., `github.com` → Firefox)
+- **Domain (suffix)**: Match domain endings (e.g., `.atlassian.net` → Chrome)
+- **Domain (contains)**: Match domains containing text (e.g., `jira` → Chrome)
+- **URL Pattern**: Match URLs containing specific text (e.g., `/admin` → Safari)
+- **URL Regex**: Advanced pattern matching with regular expressions
+
+Reorder rules by dragging them up or down in the Rules list.
+
+</Accordion>
+
+<Accordion title="How do I override routing for a single link?">
+
+Hold down the **⌥ Option key** while clicking any link. This will show a browser chooser, letting you manually select which browser to use for that specific link.
+
+This works regardless of your configured rules and fallback browser.
+
+</Accordion>
+
+<Accordion title="Does Default Tamer create any default rules?">
+
+No. Default Tamer does not create any default rules on first launch. All rules are created by you.
+
+You'll need to add your own rules based on your workflow and preferences.
+
+</Accordion>
+
+<Accordion title="What data does Default Tamer collect?">
+
+**None.** Default Tamer is completely privacy-first:
+
+- All URL routing happens locally on your Mac
+- No network requests are made (except for optional automatic update checks)
+- No telemetry or analytics are collected
+- No personal information is stored or transmitted
+
+Activity logging is opt-in and stores data only on your Mac. URLs are sanitized before storage to strip tokens, API keys, and secrets.
+
+</Accordion>
+
+<Accordion title="What is Activity Logging?">
+
+Activity Logging is an optional diagnostic feature that records recent URL routing decisions. It helps you:
+
+- Debug why a link opened in a specific browser
+- Verify your rules are working correctly
+- Track which apps are opening URLs
+
+All logs are stored locally on your Mac. URLs are sanitized to remove sensitive data like authentication tokens, API keys, and secrets before storage.
+
+Enable it in **Preferences → General → Diagnostics**.
+
+</Accordion>
+
+<Accordion title="How do I reset Default Tamer to factory settings?">
+
+Go to **Preferences → General → Danger Zone** and click **Reset to Factory Defaults**.
+
+This will:
+- Delete all your routing rules
+- Reset all settings to defaults
+- Clear the first-run flag
+- Clear the activity log (if enabled)
+
+**Warning**: This action cannot be undone. Consider exporting your rules first if the feature becomes available in a future release.
+
+</Accordion>
+
+<Accordion title="Can I import or export my rules?">
+
+Not yet. Import/export functionality is on the roadmap for a future release. You can track progress in the [GitHub Issues](https://github.com/0xdps/default-tamer/issues).
+
+</Accordion>
+
+<Accordion title="Can I use Default Tamer with Chrome profiles?">
+
+Chrome profile selection is not currently supported, but it's on the roadmap. For now, Default Tamer routes to the default Chrome profile.
+
+Follow [open issues](https://github.com/0xdps/default-tamer/issues) for updates on this feature.
+
+</Accordion>
+
+<Accordion title="How do I enable Launch at Login?">
+
+Open Default Tamer preferences and go to the **General** tab. Toggle **Launch at Login** to enable it.
+
+Default Tamer will now start automatically when you log in to your Mac.
+
+</Accordion>
+
+<Accordion title="Default Tamer isn't routing links correctly. What should I check?">
+
+1. **Verify Default Tamer is set as your default browser**: System Settings → Desktop & Dock → Default web browser
+2. **Check rule order**: Rules are evaluated top-to-bottom. The first match wins. Make sure specific rules are above general ones.
+3. **Verify rule syntax**: For domain rules, ensure you're using the correct match type (exact, suffix, contains)
+4. **Enable Activity Logging**: Preferences → General → Diagnostics → Activity Log. This will show you which rule matched (or didn't match) for each URL.
+5. **Check your fallback browser**: If no rules match, links go to your fallback browser. Verify it's set correctly in Preferences.
+
+If the issue persists, [report it on GitHub](https://github.com/0xdps/default-tamer/issues) with:
+- macOS version
+- Default Tamer version
+- The URL that's not routing correctly
+- Expected vs actual behavior
+- Activity Log output (if available)
+
+</Accordion>
+
+<Accordion title="How do I update Default Tamer?">
+
+Default Tamer uses [Sparkle](https://sparkle-project.org/) for automatic updates.
+
+- **Automatic checks**: Default Tamer checks for updates in the background
+- **Manual check**: Click the menu bar icon → About → Check for Updates
+- **Update notifications**: You'll be notified when a new version is available
+
+Updates are downloaded and installed with a single click. Your rules and settings are preserved.
+
+</Accordion>
+
+<Accordion title="How do I uninstall Default Tamer?">
+
+1. Change your default browser back to another browser in System Settings
+2. Quit Default Tamer (click menu bar icon → Quit)
+3. Move Default Tamer from Applications to Trash
+4. (Optional) Remove app data:
+   ```bash
+   rm -rf ~/Library/Application\ Support/codes.dps.DefaultTamer
+   rm -rf ~/Library/Caches/codes.dps.DefaultTamer
+   rm -rf ~/Library/Preferences/codes.dps.DefaultTamer.plist
+   ```
+
+All your rules and settings are stored in the Application Support directory.
+
+</Accordion>
+
+<Accordion title="How can I contribute to Default Tamer?">
+
+Contributions are welcome! Here's how you can help:
+
+**Report bugs or request features**:
+- Check [existing issues](https://github.com/0xdps/default-tamer/issues) first
+- Create a new issue with clear details
+
+**Contribute code**:
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/your-feature`
+3. Make your changes and test thoroughly
+4. Submit a Pull Request with a clear description
+
+**Development setup**:
+```bash
+git clone --recurse-submodules https://github.com/0xdps/default-tamer.git
+cd default-tamer
+just deploy  # Requires 'just' command runner
+```
+
+See [CONTRIBUTING.md](https://github.com/0xdps/default-tamer/blob/main/CONTRIBUTING.md) for detailed guidelines.
+
+</Accordion>
+
+<Accordion title="What's on the roadmap?">
+
+Planned features include:
+
+- Chrome profile selection
+- Import/export rules
+- "Always show chooser" per-app mode
+- iCloud sync for rules and settings
+
+See [open issues](https://github.com/0xdps/default-tamer/issues) on GitHub for the complete roadmap and to vote on features.
+
+</Accordion>
+
+<Accordion title="Is Default Tamer open source?">
+
+Yes! Default Tamer is open source under the MIT License. You can view the source code, contribute, or fork the project on [GitHub](https://github.com/0xdps/default-tamer).
+
+</Accordion>
+
+<Accordion title="Who makes Default Tamer?">
+
+Default Tamer is made by [0xdps](https://dps.codes). If you find it useful, consider [buying me a coffee](https://buymeacoffee.com/0xdps)!
+
+</Accordion>
+
+</AccordionGroup>

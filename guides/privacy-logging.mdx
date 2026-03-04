@@ -1,0 +1,468 @@
+---
+title: Privacy & Logging
+description: Privacy-first design with optional activity logging and automatic URL sanitization
+---
+
+Default Tamer is designed with privacy as a core principle. All URL routing happens locally on your Mac with no network requests or telemetry.
+
+## Privacy-First Design
+
+### No Network Requests
+
+Default Tamer never sends data over the network:
+
+- **No analytics** — We don't track usage or behavior
+- **No telemetry** — No diagnostic data is sent to servers
+- **No cloud sync** — All data stays on your device
+- **No update checks** — Checks for updates only when you explicitly request it
+
+### Local Processing Only
+
+All routing decisions are made locally:
+
+```swift
+// All rule evaluation happens in-process
+func evaluateRules(for url: URL, sourceApp: String?) -> Rule? {
+    for rule in rules where rule.enabled {
+        // Matching logic runs entirely on your Mac
+        if rule.matches(url: url, sourceApp: sourceApp) {
+            return rule
+        }
+    }
+    return nil
+}
+```
+
+### No Personal Data Storage
+
+Default Tamer stores only:
+
+- **Your routing rules** — The rules you create
+- **App preferences** — Your settings (fallback browser, launch at login)
+- **Optional activity logs** — If enabled, sanitized routing history (see below)
+
+We do **not** store:
+
+- Usernames or passwords
+- Browsing history beyond routing events
+- Personal information
+- Any data that could identify you
+
+## Activity Logging
+
+Activity logging is **opt-in** and **disabled by default**. When enabled, it helps diagnose routing issues.
+
+### What Gets Logged
+
+When activity logging is enabled, Default Tamer records:
+
+```swift
+struct RouteLog {
+    let id: UUID
+    let timestamp: Date
+    let url: String              // Sanitized (sensitive params removed)
+    let urlHost: String          // Domain only
+    let sourceApp: String?       // App that opened the link
+    let matchedRuleId: UUID?     // Which rule matched (if any)
+    let matchedRuleType: String? // Rule type (Domain, Source App, etc.)
+    let targetBrowserId: String  // Which browser opened the link
+    let targetBrowserName: String
+    let fallbackUsed: Bool       // Whether fallback was used
+    let success: Bool            // Whether opening succeeded
+}
+```
+
+### What Doesn't Get Logged
+
+- **Full URLs with sensitive parameters** — Tokens, API keys, and secrets are stripped
+- **URL fragments** — Hash portions are removed
+- **Form data** — POST data is never logged
+- **Cookies** — Not accessed or logged
+- **Page contents** — Only routing metadata is stored
+
+### Database Storage
+
+Logs are stored in a local SQLite database:
+
+**Location:**
+```
+~/Library/Application Support/DefaultTamer/activity.db
+```
+
+**Schema from source:**
+```swift
+try db?.run(routeLogs.create(ifNotExists: true) { t in
+    t.column(id, primaryKey: true)
+    t.column(timestamp)
+    t.column(url)                // Sanitized URL
+    t.column(urlHost)            // Domain only
+    t.column(sourceApp)
+    t.column(matchedRuleId)
+    t.column(matchedRuleType)
+    t.column(targetBrowserId)
+    t.column(targetBrowserName)
+    t.column(fallbackUsed)
+    t.column(success)
+})
+
+// Indexes for efficient queries
+try db?.run(routeLogs.createIndex(timestamp, ifNotExists: true))
+try db?.run(routeLogs.createIndex(urlHost, ifNotExists: true))
+try db?.run(routeLogs.createIndex(targetBrowserId, ifNotExists: true))
+```
+
+### Automatic Cleanup
+
+Old logs are automatically deleted to prevent unbounded storage growth:
+
+**From source:**
+```swift
+private func performAutomaticCleanup() {
+    // Run cleanup in background to avoid blocking startup
+    Task.detached(priority: .background) {
+        // Delete logs older than retention period
+        await self.deleteOldLogs(olderThan: DatabaseConstants.maxLogsRetentionDays)
+    }
+}
+
+func deleteOldLogs(olderThan days: Int) {
+    let cutoffDate = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+    try db?.run(routeLogs.filter(timestamp < cutoffDate).delete())
+}
+```
+
+**Default retention:** Logs older than the configured retention period are automatically deleted on app startup.
+
+## URL Sanitization
+
+Before storing any URL in activity logs, Default Tamer automatically strips sensitive information.
+
+### Sensitive Parameters Removed
+
+The following parameter types are automatically removed:
+
+**From source:**
+```swift
+private static let sensitiveParameters: Set<String> = [
+    // API Keys
+    "apikey", "api_key", "api-key", "key",
+    
+    // Authentication Tokens
+    "token", "access_token", "auth_token", "bearer", "jwt",
+    "id_token", "refresh_token", "oauth_token",
+    
+    // Session/User IDs
+    "session", "sessionid", "session_id", "sid", "ssid",
+    "userid", "user_id", "uid",
+    
+    // Secrets & Passwords
+    "secret", "client_secret", "api_secret", "password",
+    "pwd", "pass", "passwd",
+    
+    // Authentication Codes
+    "code", "auth_code", "authorization_code", "verify",
+    "verification", "otp", "2fa",
+    
+    // Cloud Provider Specific
+    "signature", "x-api-key", "x-amz-security-token",
+    "credentials", "auth",
+    
+    // Generic Sensitive
+    "private", "securetoken", "accesskey"
+]
+```
+
+### Sensitive Paths Stripped
+
+URLs with authentication-related paths are reduced to scheme + host only:
+
+**From source:**
+```swift
+private static let sensitivePaths: [String] = [
+    "/api/key",
+    "/auth/token",
+    "/oauth",
+    "/login",
+    "/signin",
+    "/authenticate"
+]
+
+// If URL contains sensitive path, only return scheme + host
+if hasSensitivePath {
+    var sanitizedComponents = URLComponents()
+    sanitizedComponents.scheme = components.scheme
+    sanitizedComponents.host = components.host
+    sanitizedComponents.port = components.port
+    return sanitizedComponents.url?.absoluteString ?? url.host ?? "[sanitized]"
+}
+```
+
+### Sanitization Examples
+
+**Original URL:**
+```
+https://api.example.com/data?user_id=12345&api_key=secret123&page=2
+```
+
+**Sanitized URL (logged):**
+```
+https://api.example.com/data?page=2
+```
+
+---
+
+**Original URL:**
+```
+https://example.com/oauth/callback?code=xyz789&state=abc123
+```
+
+**Sanitized URL (logged):**
+```
+https://example.com
+```
+
+---
+
+**Original URL:**
+```
+https://example.com/page#section-2
+```
+
+**Sanitized URL (logged):**
+```
+https://example.com/page
+```
+*(Fragments are always removed)*
+
+### Sanitization Implementation
+
+**Core sanitization logic from source:**
+```swift
+static func sanitize(_ url: URL) -> String {
+    guard var components = URLComponents(url: url, resolvingAgainstBaseURL: true) else {
+        // If we can't parse, return host only as fallback
+        return url.host ?? url.absoluteString
+    }
+    
+    // Check if path contains sensitive keywords
+    let hasSensitivePath = sensitivePaths.contains { pattern in
+        components.path.lowercased().contains(pattern)
+    }
+    
+    // If URL contains sensitive path patterns, only return scheme + host
+    if hasSensitivePath {
+        var sanitizedComponents = URLComponents()
+        sanitizedComponents.scheme = components.scheme
+        sanitizedComponents.host = components.host
+        sanitizedComponents.port = components.port
+        return sanitizedComponents.url?.absoluteString ?? url.host ?? "[sanitized]"
+    }
+    
+    // Sanitize query parameters
+    if let queryItems = components.queryItems, !queryItems.isEmpty {
+        let sanitizedItems = queryItems.compactMap { item -> URLQueryItem? in
+            let lowercasedName = item.name.lowercased()
+            
+            // Remove parameter if it matches sensitive patterns
+            if sensitiveParameters.contains(lowercasedName) {
+                return nil
+            }
+            
+            // Check if parameter name contains sensitive keywords
+            for sensitive in sensitiveParameters {
+                if lowercasedName.contains(sensitive) {
+                    return nil
+                }
+            }
+            
+            return item
+        }
+        
+        // Update query items
+        if sanitizedItems.isEmpty {
+            components.queryItems = nil
+        } else {
+            components.queryItems = sanitizedItems
+        }
+    }
+    
+    // Remove fragment (hash) as it may contain sensitive data
+    components.fragment = nil
+    
+    return components.url?.absoluteString ?? url.host ?? "[sanitized]"
+}
+```
+
+## Enable/Disable Activity Logging
+
+<Steps>
+
+### Open Preferences
+
+Click the Default Tamer menu bar icon and select **Preferences**.
+
+### Toggle Activity Logging
+
+Enable or disable **Activity Logging** based on your privacy preferences.
+
+### Review Logs
+
+If enabled, click **View Activity** to see recent routing events.
+
+### Clear Logs
+
+Click **Clear All Logs** to permanently delete all stored activity logs.
+
+</Steps>
+
+<Warning>
+Clearing activity logs is permanent and cannot be undone. Logs are useful for troubleshooting routing issues.
+</Warning>
+
+## Viewing Activity Logs
+
+When activity logging is enabled, you can view recent routing events:
+
+### Activity View Columns
+
+- **Timestamp** — When the link was opened
+- **URL** — Sanitized URL (sensitive params removed)
+- **Source App** — App that triggered the link
+- **Rule Type** — Which type of rule matched (if any)
+- **Browser** — Which browser opened the link
+- **Fallback** — Whether fallback browser was used
+- **Status** — Success or failure
+
+### Filtering Logs
+
+You can filter logs by:
+
+**From source:**
+```swift
+func fetchLogs(
+    fromDate: Date? = nil,
+    toDate: Date? = nil,
+    host: String? = nil,
+    browserId: String? = nil,
+    sourceApp: String? = nil,
+    limit: Int = 1000
+) -> [RouteLog]
+```
+
+- **Date range** — Show only logs from specific time period
+- **Domain** — Show only logs for specific domain
+- **Browser** — Show only logs for specific browser
+- **Source app** — Show only logs from specific app
+
+## Data Portability
+
+You own your data. The activity database is a standard SQLite file you can:
+
+- **Export** — Use any SQLite viewer to export logs
+- **Analyze** — Run custom queries for insights
+- **Delete** — Remove the database file to clear all logs
+
+**Database location:**
+```bash
+~/Library/Application Support/DefaultTamer/activity.db
+```
+
+## GDPR & Privacy Compliance
+
+Default Tamer is designed to comply with privacy regulations:
+
+- **No data controller** — All data is local; we never possess your data
+- **No data transmission** — Data never leaves your device
+- **No consent required** — We don't process personal data
+- **Transparent** — Open source code allows full audit
+- **User control** — You can disable logging and delete all data
+
+## Trust & Transparency
+
+Default Tamer is open source. You can:
+
+- **Review the code** — All privacy-related code is visible
+- **Audit URL sanitization** — See exactly what gets logged
+- **Verify no network calls** — Confirm no telemetry exists
+- **Build from source** — Compile your own copy for maximum trust
+
+**Source code:** [github.com/0xdps/default-tamer](https://github.com/0xdps/default-tamer)
+
+## Best Practices
+
+1. **Keep logging disabled** unless troubleshooting routing issues
+2. **Review logs periodically** to ensure sanitization is working
+3. **Clear old logs** if you no longer need them
+4. **Export your rules** (not logs) for backup and sharing
+5. **Verify browser permissions** are appropriate for your needs
+
+## FAQ
+
+<Accordion title="Can Default Tamer see my passwords?">
+
+No. Default Tamer only receives the URL of links you click. It cannot access:
+
+- Passwords entered in forms
+- Cookies or session tokens
+- Page contents after the browser opens
+- Auto-fill data or password managers
+
+It only routes the URL to the correct browser.
+
+</Accordion>
+
+<Accordion title="Are my routing rules private?">
+
+Yes. Routing rules are stored locally on your Mac:
+
+```
+~/Library/Application Support/DefaultTamer/rules.json
+```
+
+They are never transmitted over the network.
+
+</Accordion>
+
+<Accordion title="What happens if I export my rules?">
+
+Exporting creates a local file on your Mac. The file contains:
+
+- Rule types (Domain, Source App, URL Pattern)
+- Match patterns (domains, apps, URL patterns)
+- Target browsers (bundle IDs)
+
+It does **not** contain:
+
+- Activity logs
+- Actual URLs you've visited
+- Personal information
+
+You control who you share the export file with.
+
+</Accordion>
+
+<Accordion title="Does Default Tamer track analytics?">
+
+No. There is zero analytics or telemetry. We have no idea:
+
+- How many people use Default Tamer
+- How often you open links
+- Which browsers you prefer
+- What domains you visit
+
+The app is completely silent and local.
+
+</Accordion>
+
+<Accordion title="Can I audit the privacy claims?">
+
+Yes! Default Tamer is open source. You can:
+
+1. Read the source code
+2. Search for network calls (there are none)
+3. Verify URL sanitization logic
+4. Build from source if you want maximum trust
+
+**Source:** [github.com/0xdps/default-tamer](https://github.com/0xdps/default-tamer)
+
+</Accordion>

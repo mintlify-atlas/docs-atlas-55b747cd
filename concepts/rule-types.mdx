@@ -1,0 +1,490 @@
+---
+title: "Rule Types"
+description: "Complete reference for Default Tamer's routing rule types and matching behavior"
+---
+
+## Overview
+
+Default Tamer supports three types of routing rules, each designed for different use cases. Rules are evaluated in order from top to bottom, and the first matching rule determines which browser opens the URL.
+
+```swift
+// Rule.swift:10-14
+enum RuleType: String, Codable, CaseIterable {
+    case sourceApp = "Source App"
+    case domain = "Domain"
+    case urlPattern = "URL Pattern"
+}
+```
+
+## Source App Rules
+
+Route URLs based on **which application** opened them.
+
+### Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Work Apps" icon="briefcase">
+    Open all Slack links in your work browser profile
+  </Card>
+  <Card title="Development" icon="code">
+    Open links from VS Code or Cursor in your development browser
+  </Card>
+  <Card title="Email Clients" icon="envelope">
+    Route email links to a specific browser or profile
+  </Card>
+  <Card title="Chat Apps" icon="message">
+    Keep Discord/Teams links separate from personal browsing
+  </Card>
+</CardGroup>
+
+### How It Works
+
+Source App rules match based on the **bundle identifier** of the application that opened the URL.
+
+```swift
+// Router.swift:73-92
+private static func evaluateSourceAppRule(
+    _ rule: Rule, 
+    sourceApp: String?
+) -> RouteAction? {
+    guard let ruleAppBundleId = rule.sourceAppBundleId else {
+        return nil
+    }
+    
+    guard let sourceApp = sourceApp else {
+        return nil
+    }
+    
+    if sourceApp == ruleAppBundleId {
+        return .openInBrowser(
+            bundleId: rule.targetBrowserId, 
+            matchedRule: rule
+        )
+    }
+    
+    return nil
+}
+```
+
+### Configuration
+
+<ParamField path="sourceAppBundleId" type="string" required>
+  The bundle identifier of the source application (e.g., `com.tinyspeck.slackmacgap` for Slack)
+</ParamField>
+
+<ParamField path="sourceAppName" type="string">
+  Human-readable name for display purposes (e.g., "Slack")
+</ParamField>
+
+<ParamField path="targetBrowserId" type="string" required>
+  Bundle identifier of the browser to open URLs in (e.g., `com.google.Chrome`)
+</ParamField>
+
+### Examples
+
+<CodeGroup>
+```yaml Slack to Chrome
+Type: Source App
+From: Slack (com.tinyspeck.slackmacgap)
+To: Chrome
+
+Matches:
+✅ https://example.com (from Slack)
+✅ https://github.com/user/repo (from Slack)
+❌ https://example.com (from other apps)
+```
+
+```yaml Cursor to Arc
+Type: Source App
+From: Cursor (com.todesktop.230313mzl4w4u92)
+To: Arc
+
+Matches:
+✅ http://localhost:3000 (from Cursor)
+✅ https://docs.example.com (from Cursor)
+❌ http://localhost:3000 (from Terminal)
+```
+</CodeGroup>
+
+<Note>
+  **Bundle ID Resolution**: Default Tamer includes logic to dynamically resolve bundle identifiers for apps that may have multiple versions or change their bundle IDs (see `Rule.swift:106-121`).
+</Note>
+
+## Domain Rules
+
+Route URLs based on their **hostname/domain**.
+
+### Match Types
+
+Domain rules support three matching modes:
+
+```swift
+// Rule.swift:16-20
+enum DomainMatchType: String, Codable {
+    case exact = "Exact"
+    case suffix = "Suffix"
+    case contains = "Contains"
+}
+```
+
+<Tabs>
+  <Tab title="Exact">
+    Match a specific domain exactly. The `www.` prefix is automatically normalized for convenience.
+    
+    ```swift
+    // Router.swift:116-120
+    case .exact:
+        // Normalize both by stripping 'www.' for cleaner UX
+        // This way github.com matches both github.com and www.github.com
+        let normalizedHost = host.hasPrefix("www.") 
+            ? String(host.dropFirst(4)) 
+            : host
+        let normalizedPattern = pattern.hasPrefix("www.") 
+            ? String(pattern.dropFirst(4)) 
+            : pattern
+        matches = normalizedHost == normalizedPattern
+    ```
+    
+    **Examples:**
+    - Pattern: `github.com`
+    - ✅ Matches: `github.com`, `www.github.com`
+    - ❌ Doesn't match: `gist.github.com`, `api.github.com`
+  </Tab>
+  
+  <Tab title="Suffix">
+    Match all subdomains of a domain. Useful for matching entire organizations or multi-tenant services.
+    
+    ```swift
+    // Router.swift:121-125
+    case .suffix:
+        // Pattern like ".atlassian.net" or "atlassian.net"
+        let suffixPattern = pattern.hasPrefix(".")
+            ? pattern 
+            : "." + pattern
+        matches = host.hasSuffix(suffixPattern) || host == pattern
+    ```
+    
+    **Examples:**
+    - Pattern: `.atlassian.net` or `atlassian.net`
+    - ✅ Matches: `mycompany.atlassian.net`, `demo.atlassian.net`, `atlassian.net`
+    - ❌ Doesn't match: `atlassian.com`, `fakeatlassian.net`
+  </Tab>
+  
+  <Tab title="Contains">
+    Match if the pattern appears anywhere in the hostname.
+    
+    ```swift
+    // Router.swift:126-127
+    case .contains:
+        matches = host.contains(pattern)
+    ```
+    
+    **Examples:**
+    - Pattern: `staging`
+    - ✅ Matches: `staging.example.com`, `app-staging.example.com`, `example-staging.com`
+    - ❌ Doesn't match: `example.com`, `example.com/staging`
+    
+    <Warning>
+      Contains matching is very broad. Use with caution to avoid unintended matches.
+    </Warning>
+  </Tab>
+</Tabs>
+
+### Configuration
+
+<ParamField path="domainPattern" type="string" required>
+  The domain pattern to match (e.g., `github.com`, `.atlassian.net`, `staging`)
+</ParamField>
+
+<ParamField path="domainMatchType" type="enum" required>
+  How to match the pattern: `exact`, `suffix`, or `contains`
+</ParamField>
+
+<ParamField path="targetBrowserId" type="string" required>
+  Bundle identifier of the browser to open URLs in
+</ParamField>
+
+### Examples
+
+<CodeGroup>
+```yaml GitHub to Arc (Exact)
+Type: Domain
+Pattern: github.com
+Match Type: Exact
+To: Arc
+
+Matches:
+✅ https://github.com/user/repo
+✅ https://www.github.com/user/repo
+❌ https://gist.github.com
+❌ https://api.github.com
+```
+
+```yaml Atlassian to Firefox (Suffix)
+Type: Domain
+Pattern: .atlassian.net
+Match Type: Suffix
+To: Firefox
+
+Matches:
+✅ https://mycompany.atlassian.net/browse/PROJ-123
+✅ https://demo.atlassian.net
+✅ https://atlassian.net
+❌ https://atlassian.com
+```
+
+```yaml Staging to Chrome (Contains)
+Type: Domain
+Pattern: staging
+Match Type: Contains
+To: Chrome
+
+Matches:
+✅ https://staging.example.com
+✅ https://app-staging.example.com
+✅ https://example-staging.io
+❌ https://example.com/staging (path, not domain)
+```
+</CodeGroup>
+
+<Tip>
+  **Normalization**: Domain matching is case-insensitive. Both the URL's host and your pattern are converted to lowercase before comparison (`Router.swift:96-111`).
+</Tip>
+
+## URL Pattern Rules
+
+Route URLs based on **patterns in the full URL string**.
+
+### Match Types
+
+URL Pattern rules support two matching modes:
+
+<Tabs>
+  <Tab title="Contains">
+    Match if the pattern appears anywhere in the full URL (including protocol, path, and query parameters).
+    
+    ```swift
+    // Router.swift:143-147
+    if let contains = rule.urlContains?.lowercased() {
+        if urlString.contains(contains) {
+            return .openInBrowser(
+                bundleId: rule.targetBrowserId, 
+                matchedRule: rule
+            )
+        }
+    }
+    ```
+    
+    **Examples:**
+    - Pattern: `/admin`
+    - ✅ Matches: `https://example.com/admin`, `https://app.com/admin/users`
+    - ❌ Doesn't match: `https://example.com/user`
+  </Tab>
+  
+  <Tab title="Regex">
+    Match using a regular expression pattern. Supports full NSRegularExpression syntax.
+    
+    ```swift
+    // Router.swift:150-160
+    if let regexPattern = rule.urlRegex {
+        do {
+            let regex = try NSRegularExpression(
+                pattern: regexPattern, 
+                options: [.caseInsensitive]
+            )
+            let range = NSRange(urlString.startIndex..., in: urlString)
+            if regex.firstMatch(in: urlString, options: [], range: range) != nil {
+                return .openInBrowser(
+                    bundleId: rule.targetBrowserId, 
+                    matchedRule: rule
+                )
+            }
+        } catch {
+            // Invalid regex - rule doesn't match
+        }
+    }
+    ```
+    
+    **Examples:**
+    - Pattern: `/pull/[0-9]+`
+    - ✅ Matches: `https://github.com/user/repo/pull/1234`
+    - ❌ Doesn't match: `https://github.com/user/repo/pulls`
+    
+    <Note>
+      Regex matching is **case-insensitive** by default (`options: [.caseInsensitive]`).
+    </Note>
+  </Tab>
+</Tabs>
+
+### Configuration
+
+<ParamField path="urlContains" type="string">
+  Substring to search for in the full URL (case-insensitive)
+</ParamField>
+
+<ParamField path="urlRegex" type="string">
+  Regular expression pattern to match against the full URL
+</ParamField>
+
+<ParamField path="targetBrowserId" type="string" required>
+  Bundle identifier of the browser to open URLs in
+</ParamField>
+
+<Note>
+  You can configure either `urlContains` **or** `urlRegex`, or both. If both are set, `urlContains` is evaluated first.
+</Note>
+
+### Examples
+
+<CodeGroup>
+```yaml Admin Pages (Contains)
+Type: URL Pattern
+Contains: /admin
+To: Chrome
+
+Matches:
+✅ https://example.com/admin
+✅ https://example.com/admin/users
+✅ https://example.com/app/admin?tab=settings
+❌ https://example.com/user
+❌ https://admin.example.com (in domain, not path)
+```
+
+```yaml Pull Requests (Regex)
+Type: URL Pattern
+Regex: /pull/[0-9]+
+To: Arc
+
+Matches:
+✅ https://github.com/user/repo/pull/123
+✅ https://github.com/org/project/pull/4567
+❌ https://github.com/user/repo/pulls
+❌ https://github.com/user/repo/pull/abc
+```
+
+```yaml Meeting Links (Contains)
+Type: URL Pattern
+Contains: zoom.us/j/
+To: Safari
+
+Matches:
+✅ https://zoom.us/j/123456789
+✅ https://company.zoom.us/j/987654321?pwd=abc
+❌ https://zoom.us/
+❌ https://zoom.us/download
+```
+
+```yaml Development URLs (Regex)
+Type: URL Pattern
+Regex: https?://localhost:[0-9]+
+To: Chrome
+
+Matches:
+✅ http://localhost:3000
+✅ https://localhost:8080/api/users
+✅ http://localhost:5173/
+❌ http://localhost/
+❌ http://127.0.0.1:3000
+```
+</CodeGroup>
+
+## Rule Properties
+
+All rules share common properties:
+
+```swift
+// Rule.swift:22-51
+struct Rule: Identifiable, Codable, Hashable {
+    let id: UUID
+    var type: RuleType
+    var enabled: Bool
+    var targetBrowserId: String
+    var openInPrivateMode: Bool
+
+    // Match criteria (only one set used based on type)
+    var sourceAppBundleId: String?
+    var sourceAppName: String?
+
+    var domainPattern: String?
+    var domainMatchType: DomainMatchType?
+
+    var urlContains: String?
+    var urlRegex: String?
+}
+```
+
+<ParamField path="id" type="UUID">
+  Unique identifier for the rule
+</ParamField>
+
+<ParamField path="type" type="RuleType" required>
+  The type of rule: `sourceApp`, `domain`, or `urlPattern`
+</ParamField>
+
+<ParamField path="enabled" type="boolean" default="true">
+  Whether the rule is active. Disabled rules are skipped during evaluation.
+</ParamField>
+
+<ParamField path="targetBrowserId" type="string" required>
+  Bundle identifier of the browser to open matched URLs in
+</ParamField>
+
+<ParamField path="openInPrivateMode" type="boolean" default="false">
+  Whether to open URLs in private/incognito mode (browser support varies)
+</ParamField>
+
+## Combining Rules
+
+<Tip>
+  **Strategy**: Place specific rules before general ones. More specific rules should appear higher in your list to prevent general rules from capturing URLs unintentionally.
+</Tip>
+
+### Example: Layered Routing
+
+```yaml
+# ✅ CORRECT ORDER: Specific to general
+
+# 1. Handle work chat (most specific - by source app)
+Source App: Slack → Chrome (Work Profile)
+
+# 2. Handle specific work domains (specific domains)
+Domain: .company.com (suffix) → Chrome (Work Profile)
+Domain: .atlassian.net (suffix) → Chrome (Work Profile)
+
+# 3. Handle development (path-based)
+URL Pattern: /admin (contains) → Chrome (Admin Profile)
+
+# 4. Handle personal GitHub (personal account)
+Domain: github.com (exact) → Arc
+
+# 5. Everything else goes to fallback browser
+```
+
+### Example: Wrong Order
+
+```yaml
+# ❌ INCORRECT ORDER: General rule blocks specific ones
+
+# 1. This catches ALL .com domains!
+Domain: .com (suffix) → Safari
+
+# 2. These never get evaluated because rule #1 matches first
+Domain: github.com (exact) → Arc
+Source App: Slack → Chrome
+URL Pattern: /admin (contains) → Chrome
+```
+
+<Warning>
+  Remember: **First match wins**. Rules are evaluated top-to-bottom, and evaluation stops at the first matching rule.
+</Warning>
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Routing Engine" icon="route" href="/concepts/routing">
+    Learn how rules are evaluated and routing decisions are made
+  </Card>
+  <Card title="Browser Detection" icon="compass" href="/concepts/browser-detection">
+    How Default Tamer discovers and manages browsers
+  </Card>
+</CardGroup>

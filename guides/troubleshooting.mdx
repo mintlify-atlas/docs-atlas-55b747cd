@@ -1,0 +1,674 @@
+---
+title: Troubleshooting
+description: Common issues and solutions for rules not matching, browser detection, and permissions
+---
+
+This guide covers common issues you may encounter with Default Tamer and how to resolve them.
+
+## Rules Not Matching
+
+### Links Open in Wrong Browser
+
+**Symptom:** Links open in your fallback browser instead of the expected rule-matched browser.
+
+<Accordion title="Check Rule Priority">
+
+Rules are evaluated top-to-bottom. The **first matching rule wins**.
+
+**Solution:**
+
+1. Open the Rules window
+2. Check the order of your rules
+3. Drag more specific rules **above** general rules
+
+**Example problem:**
+```
+Priority 1: Domain contains "atlassian" → Chrome
+Priority 2: Domain exact "company.atlassian.net" → Firefox  ❌ Never matches!
+```
+
+**Fixed:**
+```
+Priority 1: Domain exact "company.atlassian.net" → Firefox  ✅ Matches first
+Priority 2: Domain contains "atlassian" → Chrome             ✅ Matches others
+```
+
+</Accordion>
+
+<Accordion title="Verify Rule is Enabled">
+
+Disabled rules are skipped during evaluation.
+
+**Solution:**
+
+1. Open the Rules window
+2. Check that the rule has a checkmark in the **Enabled** column
+3. Click the checkbox to enable if disabled
+
+</Accordion>
+
+<Accordion title="Check Domain Match Type">
+
+Domain rules have three match types with different behavior:
+
+- **Exact** — Matches only the exact domain (no subdomains)
+- **Suffix** — Matches domain and all subdomains
+- **Contains** — Matches if domain contains the string
+
+**Example:**
+
+Rule: `github.com` with **Exact** match type
+
+- ✅ Matches: `github.com`
+- ❌ Doesn't match: `www.github.com`, `api.github.com`, `gist.github.com`
+
+**Solution:**
+
+1. If you want to match subdomains, use **Suffix** match type: `.github.com`
+2. Or create separate rules for each subdomain
+
+</Accordion>
+
+<Accordion title="Enable Activity Logging">
+
+Activity logs show exactly which rule matched (or didn't match) for each link.
+
+**Solution:**
+
+1. Open **Preferences**
+2. Enable **Activity Logging**
+3. Click a link that's misbehaving
+4. Open **View Activity** to see what happened:
+   - Which rule matched (if any)
+   - Which browser was used
+   - Whether fallback was triggered
+
+**What to look for:**
+
+- **No Rule Matched** → Add or adjust your rules
+- **Wrong Rule Matched** → Reorder rules or refine patterns
+- **Fallback Used** → Target browser isn't installed (see below)
+
+</Accordion>
+
+<Accordion title="Test URL Pattern Rules">
+
+URL Pattern rules using regex can fail silently if the regex is invalid.
+
+**Solution:**
+
+1. Test your regex pattern using a regex tester like [regex101.com](https://regex101.com)
+2. Verify the pattern matches your expected URLs
+3. Start simple with **URL Contains** before using regex
+
+**Example:**
+
+❌ Invalid regex: `[A-Z+-[0-9]+` (unmatched bracket)
+✅ Valid regex: `[A-Z]+-[0-9]+` (matches ABC-123)
+
+**From source — regex validation:**
+```swift
+// Default Tamer uses NSRegularExpression
+do {
+    let regex = try NSRegularExpression(pattern: rule.urlRegex)
+    if regex.firstMatch(in: url.absoluteString) != nil {
+        return true  // Rule matches
+    }
+} catch {
+    // Invalid regex pattern - rule won't match
+    debugLog("❌ Invalid regex pattern: \(error)")
+}
+```
+
+</Accordion>
+
+### Source App Rules Not Working
+
+**Symptom:** Links from specific apps (Slack, Cursor, etc.) don't route correctly.
+
+<Accordion title="Verify Bundle ID">
+
+Apps are identified by their bundle ID, which can change between versions.
+
+**Solution:**
+
+1. Find the app's current bundle ID:
+   ```bash
+   osascript -e 'id of app "Slack"'
+   # Output: com.tinyspeck.slackmacgap
+   ```
+
+2. Update your rule with the correct bundle ID
+3. Or use the app name and let Default Tamer resolve it
+
+**From source — dynamic bundle ID resolution:**
+```swift
+mutating func refreshBundleId() -> Bool {
+    guard type == .sourceApp,
+          let appName = sourceAppName else {
+        return false
+    }
+    
+    // Try to find updated bundle ID
+    if let newBundleId = AppResolver.refreshBundleId(forAppNamed: appName) {
+        if newBundleId != sourceAppBundleId {
+            sourceAppBundleId = newBundleId
+            return true
+        }
+    }
+    
+    return false
+}
+```
+
+</Accordion>
+
+<Accordion title="Check Source App Name">
+
+Some apps may report a different name than expected.
+
+**Solution:**
+
+1. Enable Activity Logging
+2. Click a link from the app in question
+3. View Activity logs to see the reported source app name
+4. Update your rule to match the actual name
+
+</Accordion>
+
+## Browsers Not Detected
+
+### Installed Browser Doesn't Appear
+
+**Symptom:** A browser you've installed doesn't show up in the browser list.
+
+<Accordion title="Refresh Browser List">
+
+Default Tamer caches the browser list for 24 hours for performance.
+
+**Solution:**
+
+1. Open **Preferences**
+2. Click **Refresh Browsers**
+3. Newly installed browsers should now appear
+
+**From source — browser caching:**
+```swift
+private static let cacheExpirationInterval: TimeInterval = 86400  // 24 hours
+
+private func loadCachedBrowsers() {
+    // Check cache expiration
+    if let timestamp = defaults.object(forKey: Self.cacheTimestampKey) as? Date {
+        let age = Date().timeIntervalSince(timestamp)
+        if age > Self.cacheExpirationInterval {
+            debugLog("🔄 Browser cache expired, discovering...")
+            discoverBrowsers()
+            return
+        }
+    }
+}
+```
+
+</Accordion>
+
+<Accordion title="Verify Browser Installation">
+
+Some apps that handle URLs aren't actually browsers (terminal emulators, text editors, etc.).
+
+**Solution:**
+
+Default Tamer filters out non-browser apps:
+
+**From source — browser detection:**
+```swift
+private func isBrowserApp(bundleId: String, appURL: URL) -> Bool {
+    let lowercasedId = bundleId.lowercased()
+    
+    // Exclude terminal emulators and command line tools
+    if lowercasedId.contains("terminal") || 
+       lowercasedId.contains("iterm") {
+        return false
+    }
+    
+    // Exclude text editors
+    if lowercasedId.contains("textedit") ||
+       lowercasedId.contains("vscode") ||
+       lowercasedId.contains("xcode") {
+        return false
+    }
+    
+    // Include known web browsers
+    let knownBrowsers = [
+        "safari", "chrome", "firefox", "edge", "brave",
+        "opera", "vivaldi", "arc", "orion", "chromium"
+    ]
+    
+    for browser in knownBrowsers {
+        if lowercasedId.contains(browser) {
+            return true
+        }
+    }
+    
+    return false
+}
+```
+
+**Check:**
+
+1. Is the app actually a web browser?
+2. Is it in the standard `/Applications` folder?
+3. Try opening an `http://` link manually to verify it registers as a browser
+
+</Accordion>
+
+<Accordion title="Manual Browser Discovery">
+
+Check which apps macOS recognizes as HTTP handlers:
+
+```bash
+# List all apps that can open HTTP URLs
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -dump |
+  grep -i "bindings.*http" -A5
+```
+
+If your browser appears here but not in Default Tamer, it may be filtered out. Contact support or file an issue.
+
+</Accordion>
+
+### Target Browser Shows as "Unavailable"
+
+**Symptom:** A rule's target browser is marked as unavailable or triggers fallback.
+
+<Accordion title="Reinstall or Update Browser">
+
+The browser may have been uninstalled or moved.
+
+**Solution:**
+
+1. Reinstall the browser
+2. Click **Refresh Browsers** in Preferences
+3. Verify the browser appears in the browser list
+
+</Accordion>
+
+<Accordion title="Update Rule to Use Installed Browser">
+
+If you no longer have the target browser installed:
+
+**Solution:**
+
+1. Open the Rules window
+2. Edit the rule
+3. Select a different browser from the **Target Browser** dropdown
+4. Save the rule
+
+</Accordion>
+
+## Permissions Issues
+
+### "Default Browser" Setting Grayed Out
+
+**Symptom:** Can't select Default Tamer as default browser in System Settings.
+
+<Accordion title="Restart System Settings">
+
+macOS may not recognize Default Tamer as a browser until System Settings reloads.
+
+**Solution:**
+
+1. Quit System Settings completely (⌘Q)
+2. Relaunch System Settings
+3. Go to **Desktop & Dock** → **Default web browser**
+4. Default Tamer should now appear in the list
+
+</Accordion>
+
+<Accordion title="Re-register as Browser">
+
+Force macOS to recognize Default Tamer as a browser:
+
+```bash
+# Rebuild LaunchServices database
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
+  -kill -r -domain local -domain system -domain user
+```
+
+**Then:**
+
+1. Restart your Mac
+2. Try selecting Default Tamer as default browser again
+
+</Accordion>
+
+### Links Don't Open Default Tamer
+
+**Symptom:** Clicking links doesn't trigger Default Tamer; they open in Safari or another browser.
+
+<Accordion title="Verify Default Browser Setting">
+
+Check that Default Tamer is actually set as your default browser.
+
+**Solution:**
+
+1. Open **System Settings** → **Desktop & Dock**
+2. Scroll to **Default web browser**
+3. Select **Default Tamer**
+4. Click links from different apps to test
+
+**From source — checking default status:**
+```swift
+func isDefaultBrowser() -> Bool {
+    guard let bundleId = Bundle.main.bundleIdentifier else { return false }
+    
+    // Check http handler
+    if let httpHandler = LSCopyDefaultHandlerForURLScheme("http" as CFString)?.takeRetainedValue() as String? {
+        if httpHandler == bundleId {
+            return true
+        }
+    }
+    
+    // Check https handler
+    if let httpsHandler = LSCopyDefaultHandlerForURLScheme("https" as CFString)?.takeRetainedValue() as String? {
+        if httpsHandler == bundleId {
+            return true
+        }
+    }
+    
+    return false
+}
+```
+
+</Accordion>
+
+<Accordion title="Check for Competing Browser Managers">
+
+Other browser managers (Choosy, Browserosaurus, Finicky) may conflict.
+
+**Solution:**
+
+1. Uninstall or disable other browser managers
+2. Set Default Tamer as default browser
+3. Restart your Mac
+
+</Accordion>
+
+### Browser Won't Open
+
+**Symptom:** Default Tamer triggers but target browser fails to open.
+
+<Accordion title="Check Browser Permissions">
+
+The target browser may not have necessary permissions.
+
+**Solution:**
+
+1. Open **System Settings** → **Privacy & Security**
+2. Check **Automation** permissions
+3. Ensure Default Tamer is allowed to control the target browser
+
+</Accordion>
+
+<Accordion title="Verify Browser Path">
+
+The browser may have been moved or renamed.
+
+**From source — browser validation:**
+```swift
+private func safeOpenURL(_ url: URL, inBrowser bundleId: String) throws {
+    // Verify browser is installed
+    guard let appURL = safeURLForApplication(withBundleIdentifier: bundleId) else {
+        throw BrowserError.notInstalled(bundleId: bundleId)
+    }
+    
+    // Verify URL is accessible
+    guard FileManager.default.fileExists(atPath: appURL.path) else {
+        throw BrowserError.notAccessible(bundleId: bundleId)
+    }
+    
+    // Open URL...
+}
+```
+
+**Solution:**
+
+1. Ensure the browser is in `/Applications`
+2. Don't rename or move browser app bundles
+3. Reinstall the browser if necessary
+
+</Accordion>
+
+## Performance Issues
+
+### Slow to Open Links
+
+**Symptom:** Noticeable delay between clicking a link and browser opening.
+
+<Accordion title="Check Browser Cache">
+
+If the browser cache is stale, Default Tamer may re-discover browsers on each launch.
+
+**Solution:**
+
+1. Open **Preferences**
+2. Click **Refresh Browsers** to rebuild cache
+3. Restart Default Tamer
+
+**Browser discovery is cached for 24 hours for performance.**
+
+</Accordion>
+
+<Accordion title="Simplify Complex Regex Rules">
+
+Complex regex patterns can slow down URL matching.
+
+**Solution:**
+
+1. Use **URL Contains** instead of regex when possible
+2. Simplify regex patterns
+3. Test regex performance with online tools
+
+**Tip:** Place regex rules **after** simpler rules to minimize impact.
+
+</Accordion>
+
+### High Memory Usage
+
+**Symptom:** Default Tamer uses unexpected amounts of memory.
+
+<Accordion title="Clear Activity Logs">
+
+Large activity logs can increase memory usage.
+
+**Solution:**
+
+1. Open **View Activity**
+2. Click **Clear All Logs**
+3. Consider disabling activity logging if you don't need it
+
+**From source — automatic cleanup:**
+```swift
+private func performAutomaticCleanup() {
+    Task.detached(priority: .background) {
+        await self.deleteOldLogs(olderThan: DatabaseConstants.maxLogsRetentionDays)
+    }
+}
+```
+
+Logs older than the retention period are automatically deleted on startup.
+
+</Accordion>
+
+## Import/Export Issues
+
+### Import Failed: "No valid rules found"
+
+**Symptom:** CSV or JSON import fails with error message.
+
+<Accordion title="Validate File Format">
+
+**CSV format:**
+```csv
+Type,Enabled,Pattern/Domain/Bundle ID,Target Browser,URL Contains,URL Regex
+Domain,Yes,github.com (Exact),org.mozilla.firefox,,
+Source App,Yes,com.tinyspeck.slackmacgap,com.google.Chrome,,
+```
+
+**JSON format:**
+```json
+{
+  "version": 1,
+  "exportedAt": "2024-03-15T14:30:00Z",
+  "appVersion": "0.0.5",
+  "rules": [
+    {
+      "id": "...",
+      "type": "Domain",
+      "enabled": true,
+      "domainPattern": "github.com",
+      "targetBrowserId": "org.mozilla.firefox"
+    }
+  ]
+}
+```
+
+**Check:**
+
+1. CSV has header row
+2. JSON is valid (use [jsonlint.com](https://jsonlint.com))
+3. File encoding is UTF-8
+4. At least one rule has all required fields
+
+</Accordion>
+
+<Accordion title="Check Version Compatibility">
+
+Default Tamer validates import file versions:
+
+**From source:**
+```swift
+if exportData.version > 1 {
+    throw AppError.invalidRule(reason: "Unsupported export format version \(exportData.version)")
+}
+```
+
+**Solution:**
+
+- Update Default Tamer to the latest version
+- Or ask the exporter to use an older export format
+
+**Current version:** 1
+
+</Accordion>
+
+### Imported Rules Don't Work
+
+**Symptom:** Rules import successfully but don't match or route correctly.
+
+<Accordion title="Check Browser Availability">
+
+Imported rules may reference browsers not installed on your machine.
+
+**Solution:**
+
+1. Open the Rules window
+2. Check if any rules show "Browser Unavailable" or similar warning
+3. Edit rules to use browsers installed on your system
+4. Click **Refresh Browsers** to update browser list
+
+</Accordion>
+
+<Accordion title="Verify Bundle IDs">
+
+Bundle IDs for the same browser may differ across machines or app versions.
+
+**Example:**
+- Chrome Stable: `com.google.Chrome`
+- Chrome Beta: `com.google.Chrome.beta`
+- Chrome Canary: `com.google.Chrome.canary`
+
+**Solution:**
+
+1. Check imported rule bundle IDs
+2. Update to match your installed browser versions
+3. Use **Merge** mode to avoid overwriting working rules
+
+</Accordion>
+
+## Getting More Help
+
+### Enable Debug Logging
+
+For advanced troubleshooting, Default Tamer logs debug information in DEBUG builds.
+
+**To view logs:**
+
+```bash
+# Run Default Tamer from Terminal to see debug output
+/Applications/Default\ Tamer.app/Contents/MacOS/Default\ Tamer
+```
+
+Look for log messages with emoji prefixes:
+- ✅ — Success
+- ❌ — Error
+- ⚠️ — Warning
+- 🔄 — Background operation
+
+### Report an Issue
+
+If you're still having trouble:
+
+1. **Export your rules** for reference (no sensitive data is included)
+2. **Enable activity logging** and capture the problematic behavior
+3. **Check the logs** to see what Default Tamer is doing
+4. **File an issue** on GitHub with:
+   - macOS version
+   - Default Tamer version
+   - Steps to reproduce
+   - What you expected vs what happened
+   - Relevant activity logs (URLs are sanitized)
+
+**GitHub Issues:** [github.com/0xdps/default-tamer/issues](https://github.com/0xdps/default-tamer/issues)
+
+### Community Support
+
+For questions and discussions:
+
+- **GitHub Discussions** — Ask questions and share tips
+- **GitHub Issues** — Report bugs and request features
+
+## Common Workarounds
+
+### Override Chooser
+
+When rules aren't working or you need a one-time exception:
+
+**Hold ⌥ Option while clicking any link** to manually choose which browser to use.
+
+This bypasses all rules for that specific link.
+
+### Temporary Fallback
+
+If routing is completely broken:
+
+1. Open **System Settings** → **Desktop & Dock**
+2. Change **Default web browser** to Safari or Chrome temporarily
+3. Fix your Default Tamer configuration
+4. Switch back to Default Tamer as default browser
+
+### Fresh Start
+
+**If all else fails, reset to defaults:**
+
+1. Export your current rules (if you want to keep them)
+2. Quit Default Tamer
+3. Delete preferences and data:
+   ```bash
+   rm -rf ~/Library/Application\ Support/DefaultTamer
+   rm ~/Library/Preferences/com.defaulttamer.plist
+   ```
+4. Restart Default Tamer
+5. Reconfigure from scratch or import your exported rules
+
+<Warning>
+Deleting application data is permanent. Export your rules first if you want to keep them.
+</Warning>

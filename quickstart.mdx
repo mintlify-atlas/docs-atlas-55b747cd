@@ -1,80 +1,312 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start
+description: Create your first routing rule and start directing links to the right browser in under 2 minutes.
 ---
 
-## Get started in three steps
-
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+This guide will walk you through creating your first rule and understanding how Default Tamer routes URLs.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+Before starting, make sure you've [installed Default Tamer](/installation) and set it as your default browser.
 </Note>
+
+## Your First Rule: Route Slack Links to Chrome
+
+Let's create a rule that opens all links from Slack in Chrome.
+
+<Steps>
+  <Step title="Open Rules">
+    Click the Default Tamer menu bar icon, then click **Rules** at the top of the menu.
+  </Step>
+  
+  <Step title="Add a New Rule">
+    Click the **"+"** button at the bottom of the Rules list.
+  </Step>
+  
+  <Step title="Select Rule Type">
+    In the rule editor, set:
+    - **Type**: Source App
+    - **Source App**: Slack
+    - **Target Browser**: Chrome
+    
+    Leave "Open in Private Mode" unchecked for now.
+  </Step>
+  
+  <Step title="Save the Rule">
+    The rule is automatically saved. You should see it appear in your Rules list:
+    
+    ```
+    From Slack → Chrome
+    ```
+  </Step>
+  
+  <Step title="Test It">
+    Open Slack and click any link. It should now open in Chrome instead of your fallback browser.
+  </Step>
+</Steps>
+
+<Check>
+Congratulations! You've created your first routing rule.
+</Check>
+
+## Understanding Rule Priority
+
+<Warning>
+**Rules are evaluated top-to-bottom. The first matching rule wins.**
+</Warning>
+
+This means rule order matters. Let's see why:
+
+### Example: Specific Before General
+
+Say you want:
+- GitHub links from Slack → Firefox
+- All other Slack links → Chrome
+
+You need two rules in this order:
+
+<Steps>
+  <Step title="Rule 1: GitHub from Slack">
+    - Type: Domain
+    - Domain: `github.com`
+    - Match Type: Exact
+    - Source App: Slack (if you want this only from Slack)
+    - Target Browser: Firefox
+  </Step>
+  
+  <Step title="Rule 2: All Slack Links">
+    - Type: Source App
+    - Source App: Slack
+    - Target Browser: Chrome
+  </Step>
+</Steps>
+
+<Tip>
+Put **more specific rules** (like domain + source app) **above** more general rules (like source app only).
+</Tip>
+
+To reorder rules, drag and drop them in the Rules list.
+
+## Rule Type Examples
+
+### Source App Rule
+
+Route based on which app sent the link.
+
+**Use case:** Open all links from Cursor in Chrome
+
+- **Type**: Source App
+- **Source App**: Cursor
+- **Target Browser**: Chrome
+
+```swift
+// DefaultTamer/Models/Rule.swift:88-102
+static func cursorToChrome() -> Rule {
+    var rule = Rule(type: .sourceApp, targetBrowserId: "com.google.Chrome")
+    
+    if let bundleId = AppResolver.resolveBundleId(forAppNamed: "Cursor") {
+        rule.sourceAppBundleId = bundleId
+        rule.sourceAppName = "Cursor"
+    }
+    
+    return rule
+}
+```
+
+### Domain Rule (Exact)
+
+Route based on exact domain match.
+
+**Use case:** Open all GitHub links in Firefox
+
+- **Type**: Domain
+- **Domain**: `github.com`
+- **Match Type**: Exact
+- **Target Browser**: Firefox
+
+<Info>
+Exact matching normalizes `www.` prefixes, so `github.com` matches both `github.com` and `www.github.com`.
+</Info>
+
+### Domain Rule (Suffix)
+
+Route based on domain suffix.
+
+**Use case:** Open all Atlassian products (Jira, Confluence) in Chrome
+
+- **Type**: Domain
+- **Domain**: `.atlassian.net`
+- **Match Type**: Suffix
+- **Target Browser**: Chrome
+
+This matches:
+- `mycompany.atlassian.net`
+- `jira.atlassian.net`
+- Any subdomain ending in `.atlassian.net`
+
+### Domain Rule (Contains)
+
+Route based on domain substring.
+
+**Use case:** Open any domain containing "jira" in Chrome
+
+- **Type**: Domain
+- **Domain**: `jira`
+- **Match Type**: Contains
+- **Target Browser**: Chrome
+
+This matches:
+- `jira.mycompany.com`
+- `company-jira.com`
+- `myjirainstance.net`
+
+### URL Pattern Rule (Contains)
+
+Route based on URL content.
+
+**Use case:** Open all admin pages in Safari
+
+- **Type**: URL Pattern
+- **URL Contains**: `/admin`
+- **Target Browser**: Safari
+
+This matches any URL containing `/admin` in the path.
+
+### URL Pattern Rule (Regex)
+
+Route based on advanced pattern matching.
+
+**Use case:** Open all staging/preview environments in Firefox
+
+- **Type**: URL Pattern
+- **URL Regex**: `https?://.*\.(staging|preview)\..*`
+- **Target Browser**: Firefox
+
+This matches:
+- `https://app.staging.company.com`
+- `http://site.preview.dev`
+
+<Warning>
+Invalid regex patterns will be silently ignored. Test your regex before relying on it.
+</Warning>
+
+## Option Key Override
+
+No matter what rules you have configured, you can **always** manually choose a browser:
+
+<Steps>
+  <Step title="Hold Option Key">
+    Hold down the **⌥ Option** key on your keyboard.
+  </Step>
+  
+  <Step title="Click the Link">
+    While still holding Option, click any link.
+  </Step>
+  
+  <Step title="Choose Browser">
+    Default Tamer will show a browser chooser dialog. Select your preferred browser.
+  </Step>
+</Steps>
+
+<Tip>
+This is useful for one-off situations where you want to override your rules, like opening a link in a specific browser profile.
+</Tip>
+
+## Private Mode
+
+Each rule can optionally open links in private/incognito mode.
+
+**Use case:** Open all social media links in private mode
+
+- **Type**: Domain
+- **Domain**: `twitter.com`
+- **Match Type**: Exact
+- **Target Browser**: Safari
+- **Open in Private Mode**: ✅ Enabled
+
+<Info>
+Private mode support varies by browser. Most modern browsers (Safari, Chrome, Firefox, Arc) support it.
+</Info>
+
+## Activity Log
+
+To see which rules are matching and debug your routing:
+
+<Steps>
+  <Step title="Enable Activity Log">
+    1. Click the Default Tamer menu bar icon
+    2. Go to ⚙️ Preferences → General
+    3. Under **Diagnostics**, toggle on **"Activity Log"**
+  </Step>
+  
+  <Step title="View Logs">
+    Click any link, then return to the Default Tamer menu to see recent routing decisions.
+    
+    The log shows:
+    - URL (sanitized)
+    - Source app
+    - Which rule matched
+    - Target browser
+  </Step>
+</Steps>
+
+<Note>
+Activity logs are stored locally and URLs are sanitized to remove tokens, API keys, and secrets.
+</Note>
+
+## Disable Routing Temporarily
+
+To temporarily disable Default Tamer without changing your system default browser:
+
+1. Click the Default Tamer menu bar icon
+2. Toggle the switch at the top from green (enabled) to gray (disabled)
+
+When disabled, all links will open in your fallback browser.
+
+## Common Patterns
+
+Here are some popular routing setups:
+
+### Work vs Personal
+
+```
+1. Domain: .company.com (Suffix) → Chrome (work profile)
+2. Domain: .atlassian.net (Suffix) → Chrome (work profile)
+3. Domain: .slack.com (Suffix) → Chrome (work profile)
+4. Fallback: Safari (personal)
+```
+
+### Development Environments
+
+```
+1. URL Contains: localhost → Chrome
+2. URL Contains: 127.0.0.1 → Chrome
+3. URL Regex: https?://.*\.(dev|staging)\..* → Firefox
+4. Domain: github.com (Exact) → Arc
+5. Fallback: Safari
+```
+
+### Source-Based Routing
+
+```
+1. Source App: Slack → Chrome
+2. Source App: Cursor → Chrome
+3. Source App: Mail → Safari
+4. Fallback: Arc
+```
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="Rule Types" icon="layer-group" href="/concepts/rule-types">
+    Learn about rule types, matching logic, and advanced patterns
+  </Card>
+  <Card title="Creating Rules" icon="pen-to-square" href="/guides/creating-rules">
+    Step-by-step guide to building powerful routing rules
+  </Card>
+  <Card title="Import & Export" icon="arrow-right-arrow-left" href="/guides/import-export">
+    Back up and share your rules as JSON or CSV
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/guides/troubleshooting">
+    Common issues and solutions
+  </Card>
+</CardGroup>

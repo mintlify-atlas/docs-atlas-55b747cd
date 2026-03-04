@@ -1,0 +1,128 @@
+---
+title: Installation
+description: Download Default Tamer, install it to your Applications folder, and set it as your system default browser.
+---
+
+## Download
+
+Download the latest version of Default Tamer from GitHub Releases:
+
+<Card title="Download Default Tamer v0.0.5" icon="download" href="https://github.com/0xdps/default-tamer/releases/download/v0.0.5/DefaultTamer-v0.0.5.dmg">
+  DefaultTamer-v0.0.5.dmg (latest release)
+</Card>
+
+Or browse all releases on the [GitHub Releases page](https://github.com/0xdps/default-tamer/releases).
+
+<Note>
+Default Tamer requires **macOS 13.0 or later**.
+</Note>
+
+## Install to Applications
+
+<Steps>
+  <Step title="Open the DMG">
+    Double-click the downloaded `DefaultTamer-v0.0.5.dmg` file to mount the disk image.
+  </Step>
+  
+  <Step title="Drag to Applications">
+    Drag the Default Tamer app icon to your Applications folder.
+  </Step>
+  
+  <Step title="Launch Default Tamer">
+    Open your Applications folder and double-click Default Tamer to launch it.
+    
+    You'll see a menu bar icon appear in the top-right of your screen.
+  </Step>
+</Steps>
+
+<Warning>
+On first launch, macOS may show a security warning because Default Tamer is not from the App Store. Click "Open" to proceed. If you don't see an "Open" button, go to System Settings → Privacy & Security and click "Open Anyway".
+</Warning>
+
+## Set as Default Browser
+
+After launching Default Tamer for the first time, you'll see a first-run setup window:
+
+<Steps>
+  <Step title="Open System Settings">
+    In the first-run window, click the **"Open System Settings"** button.
+    
+    This will take you directly to the Desktop & Dock settings panel.
+  </Step>
+  
+  <Step title="Select Default Tamer">
+    In System Settings:
+    1. Navigate to **Desktop & Dock**
+    2. Scroll down to **Default web browser**
+    3. Select **Default Tamer** from the dropdown
+  </Step>
+  
+  <Step title="Verify">
+    Click any link in Slack, Mail, or another app. Default Tamer should now intercept the URL.
+    
+    Since you haven't created any rules yet, the link will open in your configured fallback browser.
+  </Step>
+</Steps>
+
+<Tip>
+You can also set Default Tamer as your default browser manually:
+- Open System Settings
+- Go to Desktop & Dock
+- Under "Default web browser", select Default Tamer
+</Tip>
+
+## Configure Fallback Browser
+
+The fallback browser is where links go when no rules match.
+
+<Steps>
+  <Step title="Open Preferences">
+    Click the Default Tamer menu bar icon, then click the gear icon ⚙️ to open Preferences.
+  </Step>
+  
+  <Step title="Set Fallback Browser">
+    In the **General** tab, find the **Fallback Browser** dropdown.
+    
+    Select your preferred default browser (Safari, Chrome, Firefox, Arc, etc.).
+  </Step>
+  
+  <Step title="Test It">
+    Click any link. It should now open in your fallback browser.
+  </Step>
+</Steps>
+
+## Optional: Launch at Login
+
+To have Default Tamer start automatically when you log in:
+
+<Steps>
+  <Step title="Open Preferences">
+    Click the Default Tamer menu bar icon → ⚙️ Preferences
+  </Step>
+  
+  <Step title="Enable Launch at Login">
+    In the **General** tab, toggle on **"Launch at Login"**.
+    
+    Default Tamer will now start automatically every time you log in to macOS.
+  </Step>
+</Steps>
+
+## Automatic Updates
+
+Default Tamer uses [Sparkle](https://sparkle-project.org/) for automatic updates. The app checks for updates in the background and will notify you when a new version is available.
+
+To manually check for updates:
+
+1. Click the Default Tamer menu bar icon
+2. Go to the **About** tab
+3. Click **"Check for Updates"**
+
+<Info>
+Update checks happen automatically in the background. You can disable automatic checks in Preferences → General.
+</Info>
+
+## What's Next?
+
+<Card title="Quick Start Guide" icon="rocket" href="/quickstart">
+  Create your first routing rule and start directing links to the right browser
+</Card>

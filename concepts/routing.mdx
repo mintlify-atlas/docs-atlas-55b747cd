@@ -1,0 +1,364 @@
+---
+title: "Routing Engine"
+description: "How Default Tamer evaluates rules and makes routing decisions"
+---
+
+## Overview
+
+Default Tamer's routing engine evaluates rules in a specific order to determine which browser should open a URL. The router is a pure decision engine that takes a URL, optional source application, and your rule configuration, then returns an action.
+
+## Routing Flow
+
+When a URL is opened, the router follows this decision flow:
+
+<Steps>
+  <Step title="Check if app is enabled">
+    If Default Tamer is disabled in settings, immediately route to the fallback browser.
+    ```swift
+    guard settings.enabled else {
+        return .openInFallback
+    }
+    ```
+  </Step>
+  
+  <Step title="Check modifier keys">
+    If the Option key is held while opening a URL, show the browser chooser dialog instead of evaluating rules.
+    ```swift
+    if let flags = modifierFlags, flags.contains(.option) {
+        return .showChooser(url: url)
+    }
+    ```
+  </Step>
+  
+  <Step title="Evaluate rules top-to-bottom">
+    Rules are evaluated in the order they appear in your configuration. **First match wins** - as soon as a rule matches, that browser is used and no further rules are checked.
+    ```swift
+    for (index, rule) in rules.enumerated() where rule.enabled {
+        if let action = evaluateRule(rule, url: url, sourceApp: sourceApp) {
+            return action  // First match wins!
+        }
+    }
+    ```
+  </Step>
+  
+  <Step title="Use fallback browser">
+    If no rules match, open the URL in your configured fallback browser.
+    ```swift
+    return .openInFallback
+    ```
+  </Step>
+</Steps>
+
+## Route Actions
+
+The router returns one of three possible actions:
+
+<CodeGroup>
+```swift Open in Browser
+case openInBrowser(bundleId: String, matchedRule: Rule?)
+// Opens URL in the specified browser
+// Includes reference to the rule that matched
+```
+
+```swift Show Chooser
+case showChooser(url: URL)
+// Displays browser selection dialog
+// Triggered by Option key or manual invocation
+```
+
+```swift Open in Fallback
+case openInFallback
+// Uses your configured fallback browser
+// Happens when app is disabled or no rules match
+```
+</CodeGroup>
+
+## Rule Evaluation Order
+
+<Warning>
+  **Order matters!** Rules are evaluated from top to bottom, and the first matching rule determines the browser. Place more specific rules before general ones.
+</Warning>
+
+### Example: Correct Rule Order
+
+```yaml
+# ✅ CORRECT: Specific rules first
+1. Source App: Slack → Chrome
+2. Domain: github.com (exact) → Arc
+3. Domain: .atlassian.net (suffix) → Firefox
+4. URL Pattern: /admin (contains) → Chrome
+```
+
+### Example: Incorrect Rule Order
+
+```yaml
+# ❌ INCORRECT: General rule blocks specific ones
+1. Domain: .com (suffix) → Safari
+2. Domain: github.com (exact) → Arc      # Never reached!
+3. Source App: Slack → Chrome            # Never reached!
+```
+
+In the incorrect example, the first rule matches **all** `.com` domains, so rules 2 and 3 never get evaluated.
+
+## Rule Evaluation Logic
+
+Each rule type has specific matching logic:
+
+<Tabs>
+  <Tab title="Source App">
+    Matches based on the bundle identifier of the app that opened the URL.
+    
+    ```swift
+    // Router.swift:73-92
+    private static func evaluateSourceAppRule(
+        _ rule: Rule, 
+        sourceApp: String?
+    ) -> RouteAction? {
+        guard let ruleAppBundleId = rule.sourceAppBundleId else {
+            return nil
+        }
+        
+        guard let sourceApp = sourceApp else {
+            return nil
+        }
+        
+        if sourceApp == ruleAppBundleId {
+            return .openInBrowser(
+                bundleId: rule.targetBrowserId, 
+                matchedRule: rule
+            )
+        }
+        
+        return nil
+    }
+    ```
+    
+    <Note>
+      Source app matching is an **exact match** of bundle identifiers (e.g., `com.tinyspeck.slackmacgap` for Slack).
+    </Note>
+  </Tab>
+  
+  <Tab title="Domain">
+    Matches based on the URL's host/domain with three match types: exact, suffix, or contains.
+    
+    ```swift
+    // Router.swift:95-136
+    private static func evaluateDomainRule(
+        _ rule: Rule, 
+        url: URL
+    ) -> RouteAction? {
+        guard let host = url.host?.lowercased() else {
+            return nil
+        }
+        
+        guard let pattern = rule.domainPattern?.lowercased() else {
+            return nil
+        }
+        
+        let matches: Bool
+        switch matchType {
+        case .exact:
+            // Normalizes www. prefix for cleaner UX
+            let normalizedHost = host.hasPrefix("www.") 
+                ? String(host.dropFirst(4)) 
+                : host
+            let normalizedPattern = pattern.hasPrefix("www.") 
+                ? String(pattern.dropFirst(4)) 
+                : pattern
+            matches = normalizedHost == normalizedPattern
+            
+        case .suffix:
+            // Pattern like ".atlassian.net" or "atlassian.net"
+            let suffixPattern = pattern.hasPrefix(".") 
+                ? pattern 
+                : "." + pattern
+            matches = host.hasSuffix(suffixPattern) || host == pattern
+            
+        case .contains:
+            matches = host.contains(pattern)
+        }
+        
+        if matches {
+            return .openInBrowser(
+                bundleId: rule.targetBrowserId, 
+                matchedRule: rule
+            )
+        }
+        
+        return nil
+    }
+    ```
+  </Tab>
+  
+  <Tab title="URL Pattern">
+    Matches based on the full URL string using either substring contains or regex.
+    
+    ```swift
+    // Router.swift:139-163
+    private static func evaluateURLPatternRule(
+        _ rule: Rule, 
+        url: URL
+    ) -> RouteAction? {
+        let urlString = url.absoluteString.lowercased()
+        
+        // Contains matching
+        if let contains = rule.urlContains?.lowercased() {
+            if urlString.contains(contains) {
+                return .openInBrowser(
+                    bundleId: rule.targetBrowserId, 
+                    matchedRule: rule
+                )
+            }
+        }
+        
+        // Regex matching
+        if let regexPattern = rule.urlRegex {
+            do {
+                let regex = try NSRegularExpression(
+                    pattern: regexPattern, 
+                    options: [.caseInsensitive]
+                )
+                let range = NSRange(urlString.startIndex..., in: urlString)
+                if regex.firstMatch(in: urlString, options: [], range: range) != nil {
+                    return .openInBrowser(
+                        bundleId: rule.targetBrowserId, 
+                        matchedRule: rule
+                    )
+                }
+            } catch {
+                // Invalid regex pattern - rule doesn't match
+            }
+        }
+        
+        return nil
+    }
+    ```
+    
+    <Note>
+      URL pattern matching is **case-insensitive** and evaluates against the full URL string (including protocol and query parameters).
+    </Note>
+  </Tab>
+</Tabs>
+
+## Routing Examples
+
+### Example 1: Source App Rule
+
+<CodeGroup>
+```yaml Rule Configuration
+Type: Source App
+From: Slack (com.tinyspeck.slackmacgap)
+To: Chrome
+```
+
+```plaintext Evaluation
+URL: https://example.com/meeting
+Source App: com.tinyspeck.slackmacgap
+
+✅ Rule matches!
+Action: Open in Chrome
+```
+</CodeGroup>
+
+### Example 2: Domain Rule with Exact Match
+
+<CodeGroup>
+```yaml Rule Configuration
+Type: Domain
+Pattern: github.com
+Match Type: Exact
+To: Arc
+```
+
+```plaintext Evaluation
+URL: https://www.github.com/repo/issues
+Host: www.github.com
+Normalized: github.com
+
+✅ Rule matches! (www. prefix normalized)
+Action: Open in Arc
+```
+</CodeGroup>
+
+### Example 3: Domain Rule with Suffix Match
+
+<CodeGroup>
+```yaml Rule Configuration
+Type: Domain
+Pattern: .atlassian.net
+Match Type: Suffix
+To: Firefox
+```
+
+```plaintext Evaluation
+URL: https://mycompany.atlassian.net/browse/PROJ-123
+Host: mycompany.atlassian.net
+
+✅ Rule matches!
+Action: Open in Firefox
+```
+</CodeGroup>
+
+### Example 4: URL Pattern with Contains
+
+<CodeGroup>
+```yaml Rule Configuration
+Type: URL Pattern
+Contains: /admin
+To: Chrome
+```
+
+```plaintext Evaluation
+URL: https://example.com/admin/dashboard?tab=users
+Full URL: https://example.com/admin/dashboard?tab=users
+
+✅ Rule matches! ("/admin" found in URL)
+Action: Open in Chrome
+```
+</CodeGroup>
+
+### Example 5: URL Pattern with Regex
+
+<CodeGroup>
+```yaml Rule Configuration
+Type: URL Pattern
+Regex: /pull/[0-9]+
+To: Arc
+```
+
+```plaintext Evaluation
+URL: https://github.com/user/repo/pull/1234
+Full URL: https://github.com/user/repo/pull/1234
+
+✅ Rule matches! (Regex finds "/pull/1234")
+Action: Open in Arc
+```
+</CodeGroup>
+
+## Debugging Rules
+
+Default Tamer logs detailed routing decisions. Use these logs to understand why a URL was routed to a specific browser:
+
+```plaintext
+🔀 Routing URL: https://github.com/user/repo
+🔀 Source App: com.tinyspeck.slackmacgap
+🔀 Enabled Rules: 5/7
+🔀 Evaluating rule #1: Source App
+   Source app rule: source=com.tinyspeck.slackmacgap, rule=com.tinyspeck.slackmacgap
+   ✅ Source app rule MATCHED!
+```
+
+<Tip>
+  Enable debug logging in Default Tamer's settings to see detailed rule evaluation logs in Console.app.
+</Tip>
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Rule Types" icon="filter" href="/concepts/rule-types">
+    Learn about all available rule types and their matching behavior
+  </Card>
+  <Card title="Browser Detection" icon="compass" href="/concepts/browser-detection">
+    How Default Tamer discovers and manages browsers
+  </Card>
+</CardGroup>

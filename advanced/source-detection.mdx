@@ -1,0 +1,231 @@
+---
+title: Source App Detection
+description: How Default Tamer identifies which application sent a URL, including confidence scoring and detection methods
+---
+
+Default Tamer uses a multi-stage detection system to identify the source application that initiated a URL open. This enables powerful routing rules based on where links come from.
+
+## Detection Methods
+
+Default Tamer employs multiple detection methods, each with a confidence score. The system selects the result with the highest confidence.
+
+### 1. Apple Event (95% Confidence)
+
+The most reliable method extracts the sender's bundle ID directly from the Apple Event descriptor:
+
+```swift
+if let bundleIdDesc = senderDescriptor.coerce(toDescriptorType: typeApplicationBundleID),
+   let bundleId = bundleIdDesc.stringValue {
+    // Use bundleId with 95% confidence
+}
+```
+
+**How it works:** When an app sends a URL open request via Apple Events, macOS includes the sender's bundle ID in the event metadata.
+
+**Reliability:** Very high - this is the official API for identifying event senders.
+
+### 2. Apple Event PID (90% Confidence)
+
+If the bundle ID is unavailable, Default Tamer extracts the process ID (PID) from the Apple Event:
+
+```swift
+if let pidDesc = senderDescriptor.coerce(toDescriptorType: typeKernelProcessID) {
+    let pid = pidData.withUnsafeBytes { $0.load(as: pid_t.self) }
+    if let app = NSRunningApplication(processIdentifier: pid) {
+        // Use app.bundleIdentifier with 90% confidence
+    }
+}
+```
+
+**How it works:** Resolves the PID to a running application using macOS APIs.
+
+**Reliability:** High - slightly lower than direct bundle ID because the process might have terminated.
+
+### 3. Active Application (85% Confidence)
+
+Detects the frontmost (active) application at the time of the URL open:
+
+```swift
+if let frontmostApp = NSWorkspace.shared.frontmostApplication {
+    // Use frontmostApp.bundleIdentifier with 85% confidence
+}
+```
+
+**How it works:** Queries `NSWorkspace` for the currently active application.
+
+**Reliability:** High - usually accurate, but can be wrong if the user switches apps quickly.
+
+### 4. Menu Bar Owner (75% Confidence)
+
+Identifies the application that owns the menu bar:
+
+```swift
+if let menuBarOwner = runningApps.first(where: { $0.ownsMenuBar }) {
+    // Use menuBarOwner.bundleIdentifier with 75% confidence
+}
+```
+
+**How it works:** Finds the app controlling the macOS menu bar (not necessarily frontmost).
+
+**Reliability:** Moderate - good fallback when the active app check fails.
+
+### 5. Recent App Switch (65% Confidence)
+
+Checks recent application switches within a 2-second time window:
+
+```swift
+let recentSwitchTimeWindow: TimeInterval = 2.0 // 2 seconds
+if let recentSwitch = recentAppSwitches.first(where: {
+    now.timeIntervalSince($0.timestamp) < recentSwitchTimeWindow
+}) {
+    // Use recentSwitch.bundleId with 65% confidence
+}
+```
+
+**How it works:** Maintains a cache of the last 10 app switches and matches within the time window.
+
+**Reliability:** Moderate - useful for quick transitions between apps.
+
+### 6. Running Applications (50% Confidence)
+
+Scans all running applications and selects the most likely candidate:
+
+```swift
+let runningApps = NSWorkspace.shared.runningApplications
+    .filter { app in
+        bundleId != Bundle.main.bundleIdentifier &&
+        !bundleId.hasPrefix("com.apple.") &&
+        app.activationPolicy == .regular
+    }
+```
+
+**How it works:** Filters system apps and prefers active applications.
+
+**Reliability:** Low - last resort when other methods fail.
+
+## Confidence Scoring System
+
+Each detection method has a predefined confidence score:
+
+| Method | Confidence | Use Case |
+|--------|-----------|----------|
+| Apple Event | 95% | Direct event sender identification |
+| Apple Event PID | 90% | Fallback when bundle ID unavailable |
+| Active Application | 85% | Current frontmost app |
+| Menu Bar Owner | 75% | App controlling menu bar |
+| Recent App Switch | 65% | Apps switched within 2 seconds |
+| Running Applications | 50% | Last resort scanning |
+
+<Note>
+  Default Tamer always selects the detection result with the **highest confidence score**. If multiple methods succeed, the one with the best reliability wins.
+</Note>
+
+## How Detection Works in Practice
+
+When a URL is opened:
+
+1. **All detection methods run concurrently** and return candidate results
+2. **Candidates are scored** based on their detection method
+3. **The highest-confidence candidate is selected** as the source app
+4. **The result is logged** for debugging:
+
+```
+🔍 Detected source app: com.tinyspeck.slackmacgap (Slack) 
+via Apple Event (confidence: 95%)
+```
+
+### Example Detection Flow
+
+Click a link in Slack:
+
+```
+✓ Apple Event: com.tinyspeck.slackmacgap (95%)
+✓ Active App: com.tinyspeck.slackmacgap (85%)
+✓ Menu Bar Owner: com.tinyspeck.slackmacgap (75%)
+
+Result: com.tinyspeck.slackmacgap (95% via Apple Event)
+```
+
+Click a link while quickly switching apps:
+
+```
+✗ Apple Event: Not available
+✓ Active App: com.apple.finder (85%)
+✓ Recent Switch: com.tinyspeck.slackmacgap (65%)
+
+Result: com.apple.finder (85% via Active Application)
+```
+
+## Known Applications
+
+Default Tamer maintains a list of known applications for display purposes:
+
+```swift
+static let knownApps: [String: String] = [
+    "com.tinyspeck.slackmacgap": "Slack",
+    "com.todesktop.230313mzl4w4u92": "Cursor",
+    "com.apple.mail": "Mail",
+    "com.apple.iCal": "Calendar",
+    "com.apple.Notes": "Notes",
+    "com.hnc.Discord": "Discord",
+    "com.microsoft.teams2": "Microsoft Teams",
+    "com.linear": "Linear"
+]
+```
+
+For unknown apps, Default Tamer queries the system for the display name.
+
+## App Switch Tracking
+
+Default Tamer monitors app switches using `NSWorkspace` notifications:
+
+```swift
+NSWorkspace.shared.notificationCenter.addObserver(
+    forName: NSWorkspace.didActivateApplicationNotification,
+    object: nil,
+    queue: .main
+) { notification in
+    // Track app switch with timestamp
+}
+```
+
+- **Cache size:** Last 10 app switches
+- **Time window:** 2 seconds for recent switch detection
+- **Purpose:** Improves detection for rapid app transitions
+
+## Limitations
+
+<Warning>
+  Some scenarios can reduce detection accuracy:
+  
+  - **System-initiated URLs:** URLs opened by system services may not have a clear source
+  - **Quick app switches:** Switching apps immediately before clicking a link may confuse detection
+  - **Browser bookmarks:** URLs opened from browser bookmarks show the browser as the source
+  - **Terminal commands:** URLs opened via `open` command show Terminal as the source
+</Warning>
+
+## Debugging Detection
+
+Enable debug logging to see detection results:
+
+```
+🔍 Detected source app: com.tinyspeck.slackmacgap (Slack) 
+via Apple Event (confidence: 95%)
+```
+
+This shows:
+- Source app bundle ID
+- Display name (if known)
+- Detection method used
+- Confidence percentage
+
+## Technical Implementation
+
+The detection system is implemented in `SourceAppDetector.swift` with:
+
+- **Singleton pattern** for app switch tracking
+- **Concurrent detection** running all methods simultaneously
+- **Confidence-based selection** choosing the best result
+- **Caching** of recent app switches for improved accuracy
+
+See `SourceAppDetector.swift:67-109` for the core detection logic.

@@ -1,0 +1,218 @@
+---
+title: Creating Rules
+description: Step-by-step guide to creating routing rules for domains, source apps, and URL patterns
+---
+
+Rules are evaluated in order—the first matching rule wins. If no rules match, your fallback browser is used.
+
+## Rule Types
+
+Default Tamer supports three types of routing rules:
+
+- **Source App** — Route based on which app the link came from
+- **Domain** — Route based on the URL's domain name
+- **URL Pattern** — Route based on URL contents using substring or regex matching
+
+<Steps>
+
+### Choose Your Rule Type
+
+Open the Rules window from the menu bar and click **Add Rule**. Select the rule type that matches your routing needs.
+
+### Configure the Rule
+
+Depending on the rule type, you'll need different configuration:
+
+<Accordion title="Source App Rules">
+
+Route links based on the application they originated from (like Slack, Cursor, or Mail).
+
+**Configuration:**
+- **Bundle ID** — The app's unique identifier (e.g., `com.tinyspeck.slackmacgap`)
+- **App Name** — Human-readable name for reference
+- **Target Browser** — Which browser to open the link in
+
+**Example from source:**
+```swift
+// Route all Slack links to Chrome
+var rule = Rule(type: .sourceApp, targetBrowserId: "com.google.Chrome")
+rule.sourceAppBundleId = "com.tinyspeck.slackmacgap"
+rule.sourceAppName = "Slack"
+```
+
+**Common Use Cases:**
+- Slack → Chrome (work links)
+- Cursor → Firefox (development links)
+- Mail → Safari (personal links)
+
+</Accordion>
+
+<Accordion title="Domain Rules">
+
+Route links based on the domain name with flexible matching modes.
+
+**Configuration:**
+- **Domain Pattern** — The domain to match
+- **Match Type** — How to match the domain
+- **Target Browser** — Which browser to open the link in
+
+**Match Types:**
+
+| Type | Description | Example Pattern | Matches | Doesn't Match |
+|------|-------------|-----------------|---------|---------------|
+| **Exact** | Matches the exact domain | `github.com` | `github.com` | `www.github.com`, `api.github.com` |
+| **Suffix** | Matches domain ending | `.atlassian.net` | `company.atlassian.net`, `team.atlassian.net` | `atlassian.com` |
+| **Contains** | Matches if domain contains string | `jira` | `company.jira.com`, `jira.atlassian.net` | `github.com` |
+
+**Example from source:**
+```swift
+// Route GitHub to Firefox
+var rule = Rule(type: .domain, targetBrowserId: "org.mozilla.firefox")
+rule.domainPattern = "github.com"
+rule.domainMatchType = .exact
+
+// Route all Atlassian products to Chrome
+var rule = Rule(type: .domain, targetBrowserId: "com.google.Chrome")
+rule.domainPattern = ".atlassian.net"
+rule.domainMatchType = .suffix
+```
+
+**Common Use Cases:**
+- `github.com` → Firefox (development)
+- `.atlassian.net` → Chrome (work tools)
+- Domain contains `jira` → Chrome
+
+</Accordion>
+
+<Accordion title="URL Pattern Rules">
+
+Route links based on URL contents using substring or regex matching.
+
+**Configuration:**
+- **URL Contains** — Simple substring matching (easier)
+- **URL Regex** — Advanced regex pattern matching (more powerful)
+- **Target Browser** — Which browser to open the link in
+
+**URL Contains Examples:**
+```swift
+// Route any URL containing "/admin" to Safari
+var rule = Rule(type: .urlPattern, targetBrowserId: "com.apple.Safari")
+rule.urlContains = "/admin"
+
+// Route any URL containing "staging" to Firefox
+var rule = Rule(type: .urlPattern, targetBrowserId: "org.mozilla.firefox")
+rule.urlContains = "staging"
+```
+
+**URL Regex Examples:**
+```swift
+// Route URLs with ticket numbers (ABC-1234) to Chrome
+var rule = Rule(type: .urlPattern, targetBrowserId: "com.google.Chrome")
+rule.urlRegex = "[A-Z]+-[0-9]+"
+
+// Route pull request URLs to Firefox
+var rule = Rule(type: .urlPattern, targetBrowserId: "org.mozilla.firefox")
+rule.urlRegex = "/pull/[0-9]+"
+```
+
+<Warning>
+Use **URL Contains** for simple substring matching. Only use **URL Regex** when you need advanced pattern matching. Invalid regex patterns will prevent the rule from matching.
+</Warning>
+
+**Common Use Cases:**
+- URL contains `/admin` → Safari (admin panels)
+- URL contains `staging` → Firefox (staging environments)
+- URL matches ticket pattern → Chrome (issue tracking)
+
+</Accordion>
+
+### Set Target Browser
+
+Select which browser should open links matching this rule. All installed browsers that can handle HTTP/HTTPS URLs are automatically detected.
+
+<Warning>
+If the target browser is not installed when a rule matches, Default Tamer will fall back to your default fallback browser.
+</Warning>
+
+### Enable/Disable Rules
+
+Toggle rules on or off without deleting them. Disabled rules are skipped during evaluation.
+
+### Reorder Rules
+
+Drag rules to change their priority. Rules are evaluated top-to-bottom—the first match wins.
+
+**Example evaluation order:**
+
+1. Source App: Slack → Chrome *(highest priority)*
+2. Domain: github.com → Firefox
+3. URL contains: staging → Safari
+4. Fallback: Chrome *(if no rules match)*
+
+</Steps>
+
+## Advanced Features
+
+### Private/Incognito Mode
+
+Enable **Open in Private Mode** to automatically open matching links in incognito/private browsing mode.
+
+**Supported browsers:**
+- Chrome: `--incognito`
+- Firefox: `-private-window`
+- Edge: `-inprivate`
+- Brave: `--incognito`
+- Opera: `--private`
+- Vivaldi: `--incognito`
+
+**From source code:**
+```swift
+private func getPrivateModeArguments(for bundleId: String) -> [String] {
+    switch bundleId {
+    case BundleIdentifiers.chrome:
+        return ["--args", "--incognito"]
+    case BundleIdentifiers.firefox:
+        return ["--args", "-private-window"]
+    case BundleIdentifiers.edge:
+        return ["--args", "-inprivate"]
+    // ...
+    }
+}
+```
+
+<Warning>
+Safari and Arc do not support command-line private mode flags. Links will open in normal mode for these browsers.
+</Warning>
+
+## Best Practices
+
+1. **Order matters** — Place more specific rules before general ones
+2. **Test rules** — Click links to verify they route correctly
+3. **Use exact domain matching** when possible for better performance
+4. **Keep it simple** — Use URL Contains before reaching for regex
+5. **Disable rather than delete** — Preserve rules you might need later
+
+## Common Patterns
+
+### Work vs Personal Separation
+
+```
+Priority 1: Domain .company.com → Chrome (work)
+Priority 2: Source App: Slack → Chrome (work)
+Priority 3: Source App: Mail → Safari (personal)
+Fallback: Safari
+```
+
+### Development Workflow
+
+```
+Priority 1: Domain github.com → Firefox (development)
+Priority 2: URL contains "localhost" → Chrome (local testing)
+Priority 3: URL contains "staging" → Firefox (staging)
+Priority 4: Domain .prod.company.com → Safari (production)
+Fallback: Chrome
+```
+
+## Troubleshooting
+
+If rules aren't working as expected, see the [Troubleshooting](/guides/troubleshooting) guide.
