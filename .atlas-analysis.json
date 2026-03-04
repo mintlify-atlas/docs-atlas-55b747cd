@@ -1,0 +1,92 @@
+{
+  "projectType": "general",
+  "projectName": "Default Tamer",
+  "projectDescription": "macOS menu bar app that intelligently routes URLs to the right browser based on source app and URL rules",
+  "theme": "almond",
+  "primaryColor": "#ef6110",
+  "lightColor": null,
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/routing",
+              "concepts/rule-types",
+              "concepts/browser-detection"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/creating-rules",
+              "guides/import-export",
+              "guides/privacy-logging",
+              "guides/troubleshooting"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/private-mode",
+              "advanced/source-detection",
+              "advanced/workflows"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Development",
+        "groups": [
+          {
+            "group": "Contributing",
+            "pages": [
+              "development/overview",
+              "development/building",
+              "development/architecture"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/changelog",
+              "reference/faq"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Smart URL routing based on source app and URL patterns",
+    "Rule engine with source app, domain, and URL pattern matching",
+    "Auto-discovery of installed browsers",
+    "Manual browser chooser with Option key override",
+    "Privacy-first design with local processing",
+    "Rules import/export in JSON and CSV formats",
+    "Private/incognito mode support for compatible browsers",
+    "Activity logging with URL sanitization",
+    "Launch at login integration",
+    "Automatic updates via Sparkle framework"
+  ],
+  "publicApiSurface": [
+    "Rule Types: Source App, Domain (exact/suffix/contains), URL Pattern (contains/regex)",
+    "Browser detection and management",
+    "Private mode support for Chrome, Firefox, Edge, Brave, Opera, Vivaldi",
+    "Import/Export formats: JSON (RulesExport v1), CSV",
+    "Source app detection methods: Apple Event, Active App, Menu Bar Owner, Recent Switch",
+    "Settings: enabled, fallbackBrowserId, diagnosticsEnabled, launchAtLogin",
+    "Activity logging with URL sanitization (strips tokens, API keys, secrets)"
+  ]
+}
